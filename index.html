@@ -5,14 +5,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (비품번호/비품명/위치/사용자 · KST 시간 · 중복방지+CSV)</title>
+<title>QR 스캐너 (비품번호/비품명/위치/사용자 · KST · 중복방지+CSV)</title>
 
-<!-- 캐시 약화 메타 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 
-<!-- 자동 버전 쿼리(깃허브 페이지에서 커밋마다 자동 갱신) -->
 <script>
 (function () {
   const APP_VERSION = '{{ site.time | date: "%Y%m%d%H%M%S" }}';
@@ -50,7 +48,6 @@
   .count{margin-left:auto;color:#333;font-size:14px}
   .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 
-  /* 라벨 칩 */
   th.key{font-weight:600;border:0;background:transparent;padding:6px 0}
   .chip{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px}
   .chip.id   {background:var(--chip-id);   color:var(--chip-id-text)}
@@ -58,7 +55,6 @@
   .chip.loc  {background:var(--chip-loc);  color:var(--chip-loc-text)}
   .chip.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
 
-  /* 최근 저장 목록 카드 */
   .list{display:grid;grid-template-columns:1fr;gap:12px}
   @media (min-width:680px){ .list{grid-template-columns:1fr 1fr} }
   .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;box-shadow:var(--shadow)}
@@ -88,9 +84,7 @@
 <div class="card">
   <h2>비품정보</h2>
   <div class="subtitle">스캔 즉시 아래 표에 표시됩니다.</div>
-  <table id="tbl">
-    <tbody></tbody>
-  </table>
+  <table id="tbl"><tbody></tbody></table>
 </div>
 
 <div class="card">
@@ -99,7 +93,6 @@
   <div id="list" class="list"></div>
 </div>
 
-<!-- jsQR 폴백용 -->
 <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
 <script>
 (() => {
@@ -111,54 +104,35 @@
 
   let stream = null, running = false;
 
-  // 저장 데이터 로드/저장 (브라우저 localStorage 사용)
-  let records = loadRecords();
-  renderList();
-
-  function loadRecords(){
-    try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); }
-    catch(e){ return []; }
-  }
+  // 저장: localStorage
+  let records = loadRecords(); renderList();
+  function loadRecords(){ try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); } catch(e){ return []; } }
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
   function setMsg(t){ msg.textContent = t || ''; }
 
-  // === 시간 유틸(KST만 저장/표시) ===
+  // 시간(KST)
   function fmtKST(d){
-    const parts = new Intl.DateTimeFormat('ko-KR',{
-      timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
-      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-    }).formatToParts(d);
-    const get = t => parts.find(p=>p.type===t)?.value || '';
-    return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+    const p = new Intl.DateTimeFormat('ko-KR',{ timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).formatToParts(d);
+    const g = t => p.find(x=>x.type===t)?.value || '';
+    return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
   }
   function nowKST(){ return fmtKST(new Date()); }
 
-  // 중복 판별용 키: id가 있으면 id, 없으면 raw
-  function dedupeKey(o){
-    const id = (o.id ?? '').trim();
-    if (id) return 'ID:' + id.toLowerCase();
-    return 'RAW:' + String(o.raw ?? '');
-  }
+  // 중복 키: id 우선, 없으면 raw
+  function dedupeKey(o){ const id=(o.id??'').trim(); return id ? 'ID:'+id.toLowerCase() : 'RAW:'+String(o.raw??''); }
 
-  // QR 텍스트 파싱 → {id,name,loc,owner, raw}
+  // QR 파서(JSON 또는 key=value;… 또는 id:name:loc:owner)
   function parseQR(text){
     let obj = {};
-    // 1) JSON 시도
-    try {
-      const j = JSON.parse(text);
-      if (j && typeof j === 'object') obj = j;
-    } catch(e){
-      // 2) key=value;key2=value2
+    try { const j = JSON.parse(text); if (j && typeof j==='object') obj = j; }
+    catch {
       if (text.includes('=')) {
-        text.split(';').forEach(p=>{
-          const [k, ...rest] = p.split('=');
-          if(!k) return;
-          const v = rest.join('=');
-          obj[k].trim?.(); // no-op guard
-          obj[k.trim?.() ?? k] = (v ?? '').trim();
+        text.split(';').forEach(pair=>{
+          const pos = pair.indexOf('='); if (pos<0) return;
+          const k = pair.slice(0,pos).trim(); const v = pair.slice(pos+1).trim();
+          if (k) obj[k] = v;
         });
       } else if (text.includes(':')) {
-        // 3) 콜론 4분절(id:name:loc:owner) 임시 대응
         const parts = text.split(':');
         if (parts.length >= 4) {
           obj.id    = parts[0].trim();
@@ -168,16 +142,9 @@
         }
       }
     }
-    return {
-      id   : obj.id    ?? '',
-      name : obj.name  ?? '',
-      loc  : obj.loc   ?? '',
-      owner: obj.owner ?? '',
-      raw  : text
-    };
+    return { id:obj.id??'', name:obj.name??'', loc:obj.loc??'', owner:obj.owner??'', raw:text };
   }
 
-  // 화면 표시는 한글 라벨 & 칩 색상
   const FIELD_ORDER = [
     {key:'id',    label:'비품번호', class:'id'},
     {key:'name',  label:'비품명',   class:'name'},
@@ -186,110 +153,83 @@
   ];
 
   function renderTable(o){
-    tbody.innerHTML = '';
-    FIELD_ORDER.forEach(({key,label, class:cls})=>{
+    tbody.innerHTML=''; 
+    FIELD_ORDER.forEach(({key,label,class:cls})=>{
       const tr=document.createElement('tr');
-      const th=document.createElement('th'); th.className='key';
-      th.innerHTML = `<span class="chip ${cls}">${label}</span>`;
-      const td=document.createElement('td'); td.textContent = o[key] ?? '';
+      const th=document.createElement('th'); th.className='key'; th.innerHTML=`<span class="chip ${cls}">${label}</span>`;
+      const td=document.createElement('td'); td.textContent=o[key]??'';
       tr.append(th,td); tbody.appendChild(tr);
     });
   }
 
-  // 중복 방지 업서트 (KST만 저장)
   function upsertRecord(o){
     const key = dedupeKey(o);
     const kst = nowKST();
-    const idx = records.findIndex(r => (r._key === key));
-    if (idx >= 0) {
-      const updated = {
-        ...records[idx],
-        id:o.id, name:o.name, loc:o.loc, owner:o.owner, raw:o.raw,
-        scanned_at_kst: kst
-      };
-      records.splice(idx, 1);
-      records.push(updated);
+    const idx = records.findIndex(r => r._key===key);
+    if (idx>=0){
+      const updated={...records[idx], id:o.id,name:o.name,loc:o.loc,owner:o.owner,raw:o.raw, scanned_at_kst:kst};
+      records.splice(idx,1); records.push(updated);
       setMsg('이미 저장된 항목입니다. 시간만 갱신했어요.');
     } else {
-      records.push({
-        _key:key, id:o.id, name:o.name, loc:o.loc, owner:o.owner,
-        raw:o.raw, scanned_at_kst: kst
-      });
+      records.push({_key:key, id:o.id,name:o.name,loc:o.loc,owner:o.owner, raw:o.raw, scanned_at_kst:kst});
       setMsg('');
     }
-    saveRecords();
-    renderList();
+    saveRecords(); renderList();
   }
 
   function renderList(){
-    listEl.innerHTML = '';
-    countEl.textContent = `저장 ${records.length}건`;
+    listEl.innerHTML=''; countEl.textContent=`저장 ${records.length}건`;
     records.slice().reverse().forEach(r=>{
-      const card = document.createElement('div');
-      card.className = 'item';
+      const card=document.createElement('div'); card.className='item';
       card.innerHTML = `
-        <div class="head">
-          <div class="time mono">${r.scanned_at_kst}</div>
-        </div>
+        <div class="head"><div class="time mono">${r.scanned_at_kst}</div></div>
         <div class="badges">
           <span class="badge id">비품번호: ${esc(r.id)}</span>
           <span class="badge name">비품명: ${esc(r.name)}</span>
           <span class="badge loc">위치: ${esc(r.loc)}</span>
           <span class="badge owner">사용자: ${esc(r.owner)}</span>
-        </div>
-      `;
+        </div>`;
       listEl.appendChild(card);
     });
   }
 
-  function esc(s){ return String(s ?? '').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+  function esc(s){ return String(s??'').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
-  function stop(){
-    running=false;
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-    video.style.display='none';
-  }
+  function stop(){ running=false; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } video.style.display='none'; }
 
   async function start(){
-    if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
-      setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.');
-      return;
-    }
-    if(!navigator.mediaDevices?.getUserMedia){
-      setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.');
-      return;
-    }
+    if(location.protocol!=='https:' && location.hostname!=='localhost'){ setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.'); return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.'); return; }
     try{
-      stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
-      });
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }});
       video.srcObject=stream; await video.play();
       video.style.display='block'; running=true; setMsg('QR을 화면에 담아주세요…');
 
+      // ➊ BarcodeDetector 우선, ➋ 1.5초 안 잡히면 강제 jsQR 폴백
       if('BarcodeDetector' in window){
         const detector = new BarcodeDetector({formats:['qr_code']});
         const useGrab = 'ImageCapture' in window;
         const track   = stream.getVideoTracks()[0];
         const grabber = useGrab ? new ImageCapture(track) : null;
+        const started = performance.now();
 
         const loop = async ()=>{
           if(!running) return;
           try{
+            // 타임아웃 폴백
+            if (performance.now() - started > 1500) { jsqrFallback(); return; }
+
             let val=null;
             if(useGrab){
               const frame = await grabber.grabFrame();
               const found = await detector.detect(frame);
               val = found && found[0]?.rawValue;
-            }else{
+            } else {
               const found = await detector.detect(video);
               val = found && found[0]?.rawValue;
             }
             if(val){
-              stop();
-              const parsed = parseQR(val);
-              renderTable(parsed);
-              upsertRecord(parsed);
-              return;
+              stop(); const parsed=parseQR(val); renderTable(parsed); upsertRecord(parsed); return;
             }
           }catch(e){
             jsqrFallback(); return;
@@ -316,51 +256,37 @@
     (function loop(){
       if(!running) return;
       const now=performance.now();
-      if(now-last<120){ requestAnimationFrame(loop); return; }
+      if(now-last<100){ requestAnimationFrame(loop); return; }
       last=now;
       if(video.readyState===video.HAVE_ENOUGH_DATA){
         c.width=video.videoWidth||640; c.height=video.videoHeight||480;
         x.drawImage(video,0,0,c.width,c.height);
-        const d=x.getImageData(0,0,c.width,c.height);
-        const qr=jsQR(d.data,d.width,d.height,{inversionAttempts:'dontInvert'});
+        const img=x.getImageData(0,0,c.width,c.height);
+        const qr=jsQR(img.data,img.width,img.height,{ inversionAttempts:'dontInvert' });
         if(qr && qr.data){
-          stop();
-          const parsed = parseQR(qr.data);
-          renderTable(parsed);
-          upsertRecord(parsed);
-          return;
+          stop(); const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed); return;
         }
       }
       requestAnimationFrame(loop);
     })();
   }
 
-  // CSV 내보내기 (UTF-8 BOM) — KST만
+  // CSV 내보내기 (UTF-8 BOM)
   function exportCSV(){
     if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
-    const header = ['스캔시각(KST)','비품번호','비품명','위치','사용자'];
-    const rows = records.map(r=>[
-      r.scanned_at_kst, r.id, r.name, r.loc, r.owner
-    ]);
-    const escCSV = v => `"${String(v??'').replace(/"/g,'""')}"`;
-    const lines = [header.map(escCSV).join(','), ...rows.map(row=>row.map(escCSV).join(','))].join('\r\n');
-    const blob = new Blob(["\ufeff"+lines], {type:'text/csv;charset=utf-8;'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'qr_scans_' + new Date().toISOString().slice(0,10) + '.csv';
-    a.click();
+    const header=['스캔시각(KST)','비품번호','비품명','위치','사용자'];
+    const rows = records.map(r=>[ r.scanned_at_kst, r.id, r.name, r.loc, r.owner ]);
+    const escCSV=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+    const lines=[header.map(escCSV).join(','), ...rows.map(row=>row.map(escCSV).join(','))].join('\r\n');
+    const blob=new Blob(["\ufeff"+lines],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='qr_scans_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
   }
 
-  // 초기화(저장 데이터만 삭제)
-  function clearAll(){
-    if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
-    records = []; saveRecords(); renderList();
-  }
+  function clearAll(){ if(!confirm('저장된 모든 레코드를 삭제할까요?')) return; records=[]; saveRecords(); renderList(); }
 
-  // 이벤트
-  document.getElementById('startBtn').onclick  = ()=>{ stop(); start(); };
-  document.getElementById('exportBtn').onclick = exportCSV;
-  document.getElementById('clearBtn').onclick  = clearAll;
+  document.getElementById('startBtn').onclick = ()=>{ stop(); start(); };
+  document.getElementById('exportBtn').onclick= exportCSV;
+  document.getElementById('clearBtn').onclick = clearAll;
 })();
 </script>
 </body>
