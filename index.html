@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (비품번호/비품명/위치/사용자 · 중복방지+CSV+KST)</title>
+<title>QR 스캐너 (비품번호/비품명/위치/사용자 · KST 시간 · 중복방지+CSV)</title>
 
 <!-- 캐시 약화 메타 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
@@ -27,7 +27,7 @@
 <style>
   :root{
     --bg:#fff; --fg:#16181b; --muted:#667085; --border:#e6e8eb;
-    --accent:#2563eb; --thead:#f8fafc; --shadow:0 4px 14px rgba(0,0,0,.08);
+    --thead:#f8fafc; --shadow:0 4px 14px rgba(0,0,0,.08);
     --chip-id:#eef2ff;     --chip-id-text:#1d4ed8;
     --chip-name:#ecfdf5;   --chip-name-text:#065f46;
     --chip-loc:#fff7ed;    --chip-loc-text:#9a3412;
@@ -50,7 +50,7 @@
   .count{margin-left:auto;color:#333;font-size:14px}
   .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 
-  /* 라벨 셀을 칩처럼 */
+  /* 라벨 칩 */
   th.key{font-weight:600;border:0;background:transparent;padding:6px 0}
   .chip{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px}
   .chip.id   {background:var(--chip-id);   color:var(--chip-id-text)}
@@ -58,7 +58,7 @@
   .chip.loc  {background:var(--chip-loc);  color:var(--chip-loc-text)}
   .chip.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
 
-  /* 최근 저장 목록을 카드+배지로 */
+  /* 최근 저장 목록 카드 */
   .list{display:grid;grid-template-columns:1fr;gap:12px}
   @media (min-width:680px){ .list{grid-template-columns:1fr 1fr} }
   .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;box-shadow:var(--shadow)}
@@ -111,7 +111,7 @@
 
   let stream = null, running = false;
 
-  // 저장 데이터 로드/저장
+  // 저장 데이터 로드/저장 (브라우저 localStorage 사용)
   let records = loadRecords();
   renderList();
 
@@ -122,7 +122,7 @@
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
   function setMsg(t){ msg.textContent = t || ''; }
 
-  // === 시간 유틸 (디바이스 시계 기준) ===
+  // === 시간 유틸(KST만 저장/표시) ===
   function fmtKST(d){
     const parts = new Intl.DateTimeFormat('ko-KR',{
       timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
@@ -131,10 +131,7 @@
     const get = t => parts.find(p=>p.type===t)?.value || '';
     return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
   }
-  function nowTimes(){
-    const now = new Date();
-    return { kst: fmtKST(now), utc: now.toISOString() };
-  }
+  function nowKST(){ return fmtKST(new Date()); }
 
   // 중복 판별용 키: id가 있으면 id, 없으면 raw
   function dedupeKey(o){
@@ -157,7 +154,8 @@
           const [k, ...rest] = p.split('=');
           if(!k) return;
           const v = rest.join('=');
-          obj[k.trim()] = (v ?? '').trim();
+          obj[k].trim?.(); // no-op guard
+          obj[k.trim?.() ?? k] = (v ?? '').trim();
         });
       } else if (text.includes(':')) {
         // 3) 콜론 4분절(id:name:loc:owner) 임시 대응
@@ -198,16 +196,16 @@
     });
   }
 
-  // 중복 방지 업서트
+  // 중복 방지 업서트 (KST만 저장)
   function upsertRecord(o){
     const key = dedupeKey(o);
-    const t   = nowTimes();
+    const kst = nowKST();
     const idx = records.findIndex(r => (r._key === key));
     if (idx >= 0) {
       const updated = {
         ...records[idx],
         id:o.id, name:o.name, loc:o.loc, owner:o.owner, raw:o.raw,
-        scanned_at_kst: t.kst, scanned_at_utc: t.utc
+        scanned_at_kst: kst
       };
       records.splice(idx, 1);
       records.push(updated);
@@ -215,7 +213,7 @@
     } else {
       records.push({
         _key:key, id:o.id, name:o.name, loc:o.loc, owner:o.owner,
-        raw:o.raw, scanned_at_kst: t.kst, scanned_at_utc: t.utc
+        raw:o.raw, scanned_at_kst: kst
       });
       setMsg('');
     }
@@ -337,12 +335,12 @@
     })();
   }
 
-  // CSV 내보내기 (UTF-8 BOM으로 엑셀 한글 깨짐 방지) — 컬럼명도 한글로
+  // CSV 내보내기 (UTF-8 BOM) — KST만
   function exportCSV(){
     if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
-    const header = ['스캔시각(KST)','스캔시각(UTC)','비품번호','비품명','위치','사용자'];
+    const header = ['스캔시각(KST)','비품번호','비품명','위치','사용자'];
     const rows = records.map(r=>[
-      r.scanned_at_kst, r.scanned_at_utc, r.id, r.name, r.loc, r.owner
+      r.scanned_at_kst, r.id, r.name, r.loc, r.owner
     ]);
     const escCSV = v => `"${String(v??'').replace(/"/g,'""')}"`;
     const lines = [header.map(escCSV).join(','), ...rows.map(row=>row.map(escCSV).join(','))].join('\r\n');
