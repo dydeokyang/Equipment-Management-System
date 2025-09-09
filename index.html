@@ -3,42 +3,187 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="manifest" href="manifest.json">
-<title>데이터 QR 스캐너</title>
-<link rel="stylesheet" href="style.css">
+<title>QR 스캐너 (표시 전용·미니)</title>
+<style>
+  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;max-width:720px;margin:24px auto;padding:0 16px}
+  h1{font-size:20px;margin:12px 0}
+  #video{width:100%;max-width:460px;display:none;border:1px solid #eee;border-radius:6px}
+  table{border-collapse:collapse;width:100%;margin-top:12px}
+  th,td{border:1px solid #ddd;padding:8px;text-align:left;word-break:break-all}
+  th{width:28%;background:#fafafa}
+  #msg{color:#b00;margin:8px 0}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+</style>
 </head>
 <body>
-<h1>데이터 QR 스캐너</h1>
+<h1>QR 스캐너</h1>
 
 <div class="row">
-  <button id="scanBtn">카메라로 스캔</button>
-  <label class="file">
-    폴백(사진으로 스캔)
-    <input id="pick" type="file" accept="image/*" capture="environment">
-  </label>
-  <button id="exportBtn">CSV 내보내기</button>
+  <button id="startBtn">카메라 시작</button>
+  <span id="hint">HTTPS(또는 localhost)에서만 카메라가 됩니다.</span>
 </div>
 
-<video id="video" playsinline></video>
+<video id="video" playsinline muted></video>
 <p id="msg"></p>
 
-<h2>항목 정보</h2>
+<h2>인식 결과</h2>
 <table id="tbl"><tbody></tbody></table>
 
-<h2>실사 기록(옵션)</h2>
-<div class="row">
-  수량 <input id="qty" type="number" min="0" value="1">
-  메모 <input id="note" type="text" placeholder="상태/위치 등">
-  <button id="saveBtn">저장</button>
-</div>
-<ul id="list"></ul>
-
-<script src="libs/jsqr.min.js"></script>
-<script src="app.js"></script>
+<!-- jsQR 폴백용 -->
+<script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
 <script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js');
-}
+(() => {
+  const startBtn = document.getElementById('startBtn');
+  const video    = document.getElementById('video');
+  const msg      = document.getElementById('msg');
+  const tbody    = document.querySelector('#tbl tbody');
+
+  let stream = null;
+  let running = false;
+
+  function setMsg(t){ msg.textContent = t || ''; }
+  function stop() {
+    running = false;
+    if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null; }
+    video.style.display = 'none';
+  }
+
+  function renderTableFromText(text){
+    tbody.innerHTML = '';
+    if(!text){ setMsg('텍스트가 비었습니다.'); return; }
+    // JSON 또는 key=value;key2=value2 자동 인식
+    let data = null;
+    try { data = JSON.parse(text); }
+    catch {
+      data = {};
+      text.split(';').forEach(p=>{
+        const [k,...rest] = p.split('=');
+        if(!k) return;
+        const v = rest.join('=');
+        if(v !== undefined) data[k.trim()] = v.trim();
+      });
+      if(Object.keys(data).length === 0){ // 일반 텍스트
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<th>text</th><td>${text}</td>`;
+        tbody.appendChild(tr);
+        return;
+      }
+    }
+    Object.keys(data).forEach(k=>{
+      const tr = document.createElement('tr');
+      const th = document.createElement('th'); th.textContent = k;
+      const td = document.createElement('td'); td.textContent = data[k];
+      tr.append(th, td); tbody.appendChild(tr);
+    });
+  }
+
+  async function start() {
+    // 보안 컨텍스트 체크
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.');
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.');
+      return;
+    }
+    try {
+      // 해상도를 조금 높여서 인식률 개선
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height:{ ideal: 720 }
+        }
+      });
+      video.srcObject = stream;
+      await video.play();
+      video.style.display = 'block';
+      running = true;
+      setMsg('QR을 화면에 담아주세요…');
+
+      // 우선 BarcodeDetector 사용, 없으면 jsQR로 폴백
+      if ('BarcodeDetector' in window) {
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        const useGrab = 'ImageCapture' in window;
+        const track = stream.getVideoTracks()[0];
+        const grabber = useGrab ? new ImageCapture(track) : null;
+
+        const loop = async () => {
+          if (!running) return;
+          try {
+            let result = null;
+            if (useGrab) {
+              const frame = await grabber.grabFrame();
+              const found = await detector.detect(frame);
+              result = found && found[0]?.rawValue;
+            } else {
+              // 일부 브라우저는 video 엘리먼트를 직접 detect 할 수 있음
+              const found = await detector.detect(video);
+              result = found && found[0]?.rawValue;
+            }
+            if (result) {
+              stop();
+              setMsg('');
+              renderTableFromText(result);
+              return;
+            }
+          } catch(e) {
+            // detector가 실패하면 jsQR로 폴백
+            jsqrFallback();
+            return;
+          }
+          requestAnimationFrame(loop);
+        };
+        loop();
+      } else {
+        jsqrFallback();
+      }
+    } catch (e) {
+      const map = {
+        NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
+        NotFoundError:'카메라 장치를 찾을 수 없습니다.',
+        NotReadableError:'다른 앱이 카메라 사용 중입니다.',
+        OverconstrainedError:'카메라 조건을 만족하지 못했습니다.',
+        SecurityError:'보안 정책으로 차단되었습니다.'
+      };
+      setMsg(map[e.name] || `카메라 오류: ${e.name || e}`);
+    }
+  }
+
+  function jsqrFallback(){
+    // 캔버스 기반 스캔: 대부분 환경에서 가장 호환성이 좋음
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d');
+    let lastTry = 0;
+
+    const loop = () => {
+      if (!running) return;
+      // 너무 자주 돌리면 느려지니 120ms 간격
+      const now = performance.now();
+      if (now - lastTry < 120) { requestAnimationFrame(loop); return; }
+      lastTry = now;
+
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        c.width  = video.videoWidth  || 640;
+        c.height = video.videoHeight || 480;
+        ctx.drawImage(video, 0, 0, c.width, c.height);
+        const img = ctx.getImageData(0, 0, c.width, c.height);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+          stop();
+          setMsg('');
+          renderTableFromText(code.data);
+          return;
+        }
+      }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  startBtn.addEventListener('click', () => { stop(); start(); });
+})();
 </script>
 </body>
 </html>
