@@ -3,135 +3,188 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (표시 전용·미니)</title>
+<title>QR 스캐너 (자동 저장 + CSV 내보내기)</title>
 <style>
-  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;max-width:720px;margin:24px auto;padding:0 16px}
+  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;max-width:760px;margin:24px auto;padding:0 16px}
   h1{font-size:20px;margin:12px 0}
-  #video{width:100%;max-width:460px;display:none;border:1px solid #eee;border-radius:6px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  button,input,label{font-size:16px}
+  #video{width:100%;max-width:460px;display:none;border:1px solid #eee;border-radius:6px;margin:8px 0}
   table{border-collapse:collapse;width:100%;margin-top:12px}
   th,td{border:1px solid #ddd;padding:8px;text-align:left;word-break:break-all}
   th{width:28%;background:#fafafa}
   #msg{color:#b00;margin:8px 0}
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .muted{color:#666;font-size:13px}
+  .count{color:#333;font-size:14px;margin-left:auto}
+  ul{padding-left:18px}
 </style>
 </head>
 <body>
 <h1>QR 스캐너</h1>
+<p class="muted">지원 포맷: <code>key=value;…</code> 또는 JSON. (예: <code>id=A-1;name=노트북;loc=창고1;owner=홍길동</code>)<br>
+카메라는 <strong>HTTPS/localhost</strong>에서만 동작합니다.</p>
 
 <div class="row">
   <button id="startBtn">카메라 시작</button>
-  <span id="hint">HTTPS(또는 localhost)에서만 카메라가 됩니다.</span>
+  <button id="exportBtn">CSV 내보내기</button>
+  <button id="clearBtn" title="저장된 모든 레코드를 삭제합니다.">초기화</button>
+  <span class="count" id="count">저장 0건</span>
 </div>
 
 <video id="video" playsinline muted></video>
 <p id="msg"></p>
 
-<h2>인식 결과</h2>
+<h2>방금 인식한 내용</h2>
 <table id="tbl"><tbody></tbody></table>
+
+<h2>최근 저장 목록</h2>
+<ul id="list"></ul>
 
 <!-- jsQR 폴백용 -->
 <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
 <script>
 (() => {
-  const startBtn = document.getElementById('startBtn');
-  const video    = document.getElementById('video');
-  const msg      = document.getElementById('msg');
-  const tbody    = document.querySelector('#tbl tbody');
+  const video  = document.getElementById('video');
+  const msg    = document.getElementById('msg');
+  const tbody  = document.querySelector('#tbl tbody');
+  const listEl = document.getElementById('list');
+  const countEl= document.getElementById('count');
 
-  let stream = null;
-  let running = false;
+  let stream = null, running = false;
 
-  function setMsg(t){ msg.textContent = t || ''; }
-  function stop() {
-    running = false;
-    if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null; }
-    video.style.display = 'none';
+  // 저장소 로드/세이브
+  let records = loadRecords();
+  renderList();
+
+  function loadRecords(){
+    try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); }
+    catch(e){ return []; }
   }
+  function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
+  function setMsg(t){ msg.textContent = t || ''; }
 
-  function renderTableFromText(text){
-    tbody.innerHTML = '';
-    if(!text){ setMsg('텍스트가 비었습니다.'); return; }
-    // JSON 또는 key=value;key2=value2 자동 인식
-    let data = null;
-    try { data = JSON.parse(text); }
-    catch {
-      data = {};
-      text.split(';').forEach(p=>{
-        const [k,...rest] = p.split('=');
-        if(!k) return;
-        const v = rest.join('=');
-        if(v !== undefined) data[k.trim()] = v.trim();
-      });
-      if(Object.keys(data).length === 0){ // 일반 텍스트
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<th>text</th><td>${text}</td>`;
-        tbody.appendChild(tr);
-        return;
+  // QR 텍스트 파싱 → {id,name,loc,owner, raw}
+  function parseQR(text){
+    let obj = {};
+    // 1) JSON 시도
+    try {
+      const j = JSON.parse(text);
+      if (j && typeof j === 'object') obj = j;
+    } catch(e){
+      // 2) key=value;key2=value2
+      if (text.includes('=')) {
+        text.split(';').forEach(p=>{
+          const [k, ...rest] = p.split('=');
+          if(!k) return;
+          const v = rest.join('=');
+          obj[k.trim()] = (v ?? '').trim();
+        });
+      } else if (text.includes(':')) {
+        // 3) 콜론 4분절(id:name:loc:owner) 임시 대응
+        const parts = text.split(':');
+        if (parts.length >= 4) {
+          obj.id    = parts[0].trim();
+          obj.name  = parts[1].trim();
+          obj.loc   = parts[2].trim();
+          obj.owner = parts[3].trim();
+        }
       }
     }
-    Object.keys(data).forEach(k=>{
-      const tr = document.createElement('tr');
-      const th = document.createElement('th'); th.textContent = k;
-      const td = document.createElement('td'); td.textContent = data[k];
-      tr.append(th, td); tbody.appendChild(tr);
+    return {
+      id   : obj.id    ?? '',
+      name : obj.name  ?? '',
+      loc  : obj.loc   ?? '',
+      owner: obj.owner ?? '',
+      raw  : text
+    };
+  }
+
+  function renderTable(o){
+    tbody.innerHTML = '';
+    const rows = [
+      ['id', o.id],
+      ['name', o.name],
+      ['loc', o.loc],
+      ['owner', o.owner],
+      ['raw', o.raw]
+    ];
+    rows.forEach(([k,v])=>{
+      const tr=document.createElement('tr');
+      const th=document.createElement('th'); th.textContent=k;
+      const td=document.createElement('td'); td.textContent=v;
+      tr.append(th,td); tbody.appendChild(tr);
     });
   }
 
-  async function start() {
-    // 보안 컨텍스트 체크
-    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+  function addRecord(o){
+    const rec = {
+      id:o.id, name:o.name, loc:o.loc, owner:o.owner,
+      raw:o.raw, scanned_at: new Date().toISOString()
+    };
+    records.push(rec);
+    saveRecords();
+    renderList();
+  }
+
+  function renderList(){
+    listEl.innerHTML = '';
+    countEl.textContent = `저장 ${records.length}건`;
+    records.slice().reverse().forEach(r=>{
+      const li=document.createElement('li');
+      li.textContent = `${r.scanned_at} | id:${r.id} | name:${r.name} | loc:${r.loc} | owner:${r.owner}`;
+      listEl.appendChild(li);
+    });
+  }
+
+  function stop(){
+    running=false;
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    video.style.display='none';
+  }
+
+  async function start(){
+    if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
       setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.');
       return;
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
+    if(!navigator.mediaDevices?.getUserMedia){
       setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.');
       return;
     }
-    try {
-      // 해상도를 조금 높여서 인식률 개선
+    try{
       stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height:{ ideal: 720 }
-        }
+        video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
       });
-      video.srcObject = stream;
-      await video.play();
-      video.style.display = 'block';
-      running = true;
-      setMsg('QR을 화면에 담아주세요…');
+      video.srcObject=stream; await video.play();
+      video.style.display='block'; running=true; setMsg('QR을 화면에 담아주세요…');
 
-      // 우선 BarcodeDetector 사용, 없으면 jsQR로 폴백
-      if ('BarcodeDetector' in window) {
-        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      if('BarcodeDetector' in window){
+        const detector = new BarcodeDetector({formats:['qr_code']});
         const useGrab = 'ImageCapture' in window;
-        const track = stream.getVideoTracks()[0];
+        const track   = stream.getVideoTracks()[0];
         const grabber = useGrab ? new ImageCapture(track) : null;
 
-        const loop = async () => {
-          if (!running) return;
-          try {
-            let result = null;
-            if (useGrab) {
+        const loop = async ()=>{
+          if(!running) return;
+          try{
+            let val=null;
+            if(useGrab){
               const frame = await grabber.grabFrame();
               const found = await detector.detect(frame);
-              result = found && found[0]?.rawValue;
-            } else {
-              // 일부 브라우저는 video 엘리먼트를 직접 detect 할 수 있음
+              val = found && found[0]?.rawValue;
+            }else{
               const found = await detector.detect(video);
-              result = found && found[0]?.rawValue;
+              val = found && found[0]?.rawValue;
             }
-            if (result) {
-              stop();
-              setMsg('');
-              renderTableFromText(result);
+            if(val){
+              stop(); setMsg('');
+              const parsed = parseQR(val);
+              renderTable(parsed);
+              addRecord(parsed); // ★ 스캔할 때마다 자동 저장
               return;
             }
-          } catch(e) {
-            // detector가 실패하면 jsQR로 폴백
-            jsqrFallback();
-            return;
+          }catch(e){
+            jsqrFallback(); return;
           }
           requestAnimationFrame(loop);
         };
@@ -139,50 +192,67 @@
       } else {
         jsqrFallback();
       }
-    } catch (e) {
-      const map = {
-        NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
-        NotFoundError:'카메라 장치를 찾을 수 없습니다.',
-        NotReadableError:'다른 앱이 카메라 사용 중입니다.',
-        OverconstrainedError:'카메라 조건을 만족하지 못했습니다.',
-        SecurityError:'보안 정책으로 차단되었습니다.'
-      };
-      setMsg(map[e.name] || `카메라 오류: ${e.name || e}`);
+    }catch(e){
+      const map={NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
+                 NotFoundError:'카메라 장치를 찾을 수 없습니다.',
+                 NotReadableError:'다른 앱이 카메라 사용 중입니다.',
+                 OverconstrainedError:'카메라 조건을 만족하지 못했습니다.',
+                 SecurityError:'보안 정책으로 차단되었습니다.'};
+      setMsg(map[e.name]||`카메라 오류: ${e.name||e}`);
     }
   }
 
   function jsqrFallback(){
-    // 캔버스 기반 스캔: 대부분 환경에서 가장 호환성이 좋음
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d');
-    let lastTry = 0;
-
-    const loop = () => {
-      if (!running) return;
-      // 너무 자주 돌리면 느려지니 120ms 간격
-      const now = performance.now();
-      if (now - lastTry < 120) { requestAnimationFrame(loop); return; }
-      lastTry = now;
-
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        c.width  = video.videoWidth  || 640;
-        c.height = video.videoHeight || 480;
-        ctx.drawImage(video, 0, 0, c.width, c.height);
-        const img = ctx.getImageData(0, 0, c.width, c.height);
-        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-        if (code && code.data) {
-          stop();
-          setMsg('');
-          renderTableFromText(code.data);
+    const c=document.createElement('canvas'), x=c.getContext('2d');
+    let last=0;
+    (function loop(){
+      if(!running) return;
+      const now=performance.now();
+      if(now-last<120){ requestAnimationFrame(loop); return; }
+      last=now;
+      if(video.readyState===video.HAVE_ENOUGH_DATA){
+        c.width=video.videoWidth||640; c.height=video.videoHeight||480;
+        x.drawImage(video,0,0,c.width,c.height);
+        const d=x.getImageData(0,0,c.width,c.height);
+        const qr=jsQR(d.data,d.width,d.height,{inversionAttempts:'dontInvert'});
+        if(qr && qr.data){
+          stop(); setMsg('');
+          const parsed = parseQR(qr.data);
+          renderTable(parsed);
+          addRecord(parsed); // ★ 자동 저장
           return;
         }
       }
       requestAnimationFrame(loop);
-    };
-    loop();
+    })();
   }
 
-  startBtn.addEventListener('click', () => { stop(); start(); });
+  // CSV 내보내기 (UTF-8 BOM으로 엑셀 한글 깨짐 방지)
+  function exportCSV(){
+    if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
+    const header = ['scanned_at','id','name','loc','owner','raw'];
+    const rows = records.map(r=>[
+      r.scanned_at, r.id, r.name, r.loc, r.owner, r.raw
+    ]);
+    const esc = v => `"${String(v??'').replace(/"/g,'""')}"`;
+    const lines = [header.map(esc).join(','), ...rows.map(row=>row.map(esc).join(','))].join('\r\n');
+    const blob = new Blob(["\ufeff"+lines], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qr_scans_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+  }
+
+  // 초기화
+  function clearAll(){
+    if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
+    records = []; saveRecords(); renderList();
+  }
+
+  // 이벤트
+  document.getElementById('startBtn').onclick  = ()=>{ stop(); start(); };
+  document.getElementById('exportBtn').onclick = exportCSV;
+  document.getElementById('clearBtn').onclick  = clearAll;
 })();
 </script>
 </body>
