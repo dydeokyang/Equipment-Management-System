@@ -99,7 +99,7 @@
 </div>
 
 <!-- jsQR (minified, 로컬 고정 버전 사용) -->
-<script src="/libs/jsqr.min.js"></script>
+<script src="/libs/jsQR.js"></script>
 
 <script>
 (() => {
@@ -230,7 +230,7 @@
   // 카메라 시작 -----------------------------------------------------------
   async function start(){
     // 즉시 실패 원인 노출
-    expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. /lib/jsqr.min.js 경로(배포 여부)를 확인하세요.');
+    expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. /libs/jsQR.js 경로(배포 여부)를 확인하세요.');
     expect(location.protocol==='https:' || location.hostname==='localhost', 'HTTPS 또는 localhost에서만 동작합니다.');
     expect(!!navigator.mediaDevices?.getUserMedia, '이 브라우저는 카메라 API를 지원하지 않습니다.');
 
@@ -475,4 +475,5 @@
 </script>
 </body>
 </html>
+
 
