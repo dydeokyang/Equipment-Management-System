@@ -11,7 +11,6 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 
-<!-- 캐시 무효화 (Jekyll time stamp 쿼리) -->
 <script>
 (function () {
   const APP_VERSION = '{{ site.time | date: "%Y%m%d%H%M%S" }}';
@@ -38,7 +37,9 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
   button{font-size:16px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
   button:hover{border-color:#c9ced6}
+  #preview{position:relative; display:inline-block}
   #video{width:100%;max-width:520px;display:none;border:1px solid var(--border);border-radius:12px;margin:10px 0;box-shadow:var(--shadow)}
+  #overlay{display:none; position:absolute; inset:0; width:100%; max-width:520px; pointer-events:none}
   .card{background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px;margin:14px 0}
   .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
   table{border-collapse:separate;border-spacing:0;width:100%}
@@ -79,7 +80,10 @@
   <span class="count" id="count">저장 0건</span>
 </div>
 
-<video id="video" playsinline muted></video>
+<div id="preview">
+  <video id="video" playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
 <p id="msg"></p>
 
 <div class="card">
@@ -94,35 +98,44 @@
   <div id="list" class="list"></div>
 </div>
 
-<!-- 로컬 고정 버전(min) 사용 -->
+<!-- jsQR (minified, 로컬 고정 버전 사용) -->
 <script src="/lib/jsqr.min.js"></script>
 
 <script>
 (() => {
-  const video  = document.getElementById('video');
-  const msg    = document.getElementById('msg');
-  const tbody  = document.querySelector('#tbl tbody');
-  const listEl = document.getElementById('list');
-  const countEl= document.getElementById('count');
+  // ===== 설정 노브 =====
+  const DEBUG = false;     // true로 하면 오버레이에 상태/박스 표시
+  const TARGET = 640;      // 다운스케일 해상도(480~720 사이에서 조절)
+  const WARMUP_FRAMES = 8; // 시작 후 초점/노출 안정화 프레임 스킵 수
+  const STACK_N = 3;       // 디플리커용 프레임 합성 개수(모니터 QR에 유리)
+  const FRAME_GAP = 80;    // 디코드 주기(ms). 60~120 권장
+
+  const video   = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const ox      = overlay.getContext('2d');
+  const msg     = document.getElementById('msg');
+  const tbody   = document.querySelector('#tbl tbody');
+  const listEl  = document.getElementById('list');
+  const countEl = document.getElementById('count');
 
   let stream = null, running = false;
 
-  // --- 환경 감지: iOS 여부 (iPhone/iPad WebKit)
+  // iOS 감지 (iPhone/iPad WebKit)
   const isIOS = (() => {
     const ua = navigator.userAgent || '';
     const iOSDevice = /iP(hone|ad|od)/.test(ua);
     const webkit = /WebKit/.test(ua);
-    const isCriOS = /CriOS/.test(ua); // iOS Chrome
+    const isCriOS = /CriOS/.test(ua);
     return (iOSDevice && webkit) || isCriOS;
   })();
 
-  // --- 저장: localStorage
+  // 저장 -----------------------------------------------------------------
   let records = loadRecords(); renderList();
   function loadRecords(){ try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); } catch(e){ return []; } }
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
   function setMsg(t){ msg.textContent = t || ''; }
 
-  // --- 시간(KST)
+  // 시간(KST)
   function fmtKST(d){
     const p = new Intl.DateTimeFormat('ko-KR',{ timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).formatToParts(d);
     const g = t => p.find(x=>x.type===t)?.value || '';
@@ -130,10 +143,10 @@
   }
   function nowKST(){ return fmtKST(new Date()); }
 
-  // --- 중복 키: id 우선, 없으면 raw
+  // 중복 키
   function dedupeKey(o){ const id=(o.id??'').trim(); return id ? 'ID:'+id.toLowerCase() : 'RAW:'+String(o.raw??''); }
 
-  // --- QR 파서(JSON | key=value;… | id:name:loc:owner)
+  // QR 파서
   function parseQR(text){
     let obj = {};
     try { const j = JSON.parse(text); if (j && typeof j==='object') obj = j; }
@@ -146,12 +159,7 @@
         });
       } else if (text.includes(':')) {
         const parts = text.split(':');
-        if (parts.length >= 4) {
-          obj.id    = parts[0].trim();
-          obj.name  = parts[1].trim();
-          obj.loc   = parts[2].trim();
-          obj.owner = parts[3].trim();
-        }
+        if (parts.length >= 4) { obj.id=parts[0].trim(); obj.name=parts[1].trim(); obj.loc=parts[2].trim(); obj.owner=parts[3].trim(); }
       }
     }
     return { id:obj.id??'', name:obj.name??'', loc:obj.loc??'', owner:obj.owner??'', raw:text };
@@ -209,15 +217,13 @@
 
   function stop(){
     running=false;
-    if(stream){
-      stream.getTracks().forEach(t=>t.stop());
-      stream=null;
-    }
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
     video.srcObject=null;
     video.style.display='none';
+    overlay.style.display='none';
   }
 
-  // --- 카메라 시작: iOS 강제 jsQR, AND/데스크톱은 레이스 실행
+  // 카메라 시작 -----------------------------------------------------------
   async function start(){
     if(location.protocol!=='https:' && location.hostname!=='localhost'){ setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.'); return; }
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.'); return; }
@@ -246,14 +252,19 @@
       }
       await video.play();
 
+      // 오버레이 초기화
+      overlay.width  = video.videoWidth  || 640;
+      overlay.height = video.videoHeight || 480;
+      overlay.style.display = DEBUG ? 'block' : 'none';
+
       video.style.display='block';
       running = true;
-      setMsg('QR을 화면에 담아주세요…');
+      setMsg('QR을 화면 중앙에 크게 맞춰주세요…');
 
-      // iOS: 네이티브 미지원 → jsQR 폴백만 사용
+      // iOS: 네이티브 없음 → jsQR 폴백만 사용
       if (isIOS) { jsqrFallback(); return; }
 
-      // AND/데스크: 네이티브와 jsQR을 레이스로 동시 실행 (먼저 잡는 쪽 승리)
+      // AND/데스크톱: 네이티브 + jsQR 레이스 (먼저 잡는 쪽이 승리)
       let resolved = false;
       const win = (val)=>{
         if (resolved) return true;
@@ -268,7 +279,7 @@
         return false;
       };
 
-      // A) BarcodeDetector 루프 (grabFrame 경로는 기기별 불안정→detect(video)만 사용)
+      // A) BarcodeDetector 루프 (grabFrame은 기기별 이슈 → detect(video) 경로만)
       const runDetector = async ()=>{
         if(!('BarcodeDetector' in window)) return;
         const detector = new BarcodeDetector({ formats:['qr_code'] });
@@ -278,7 +289,7 @@
             const found = await detector.detect(video);
             const val = found && found[0]?.rawValue;
             if (win(val)) return;
-          }catch(_) { /* 무시하고 계속 */ }
+          }catch(_) { /* 계속 */ }
           requestAnimationFrame(loop);
         };
         loop();
@@ -291,6 +302,19 @@
 
       runDetector();
       runJsQR();
+
+      // (선택) 카메라 힌트: 일부 기기에서 초점/줌 도움(무시될 수 있음)
+      try {
+        const track = stream?.getVideoTracks?.()[0];
+        const caps  = track?.getCapabilities?.() || {};
+        const cons  = { advanced: [] };
+        if (caps?.focusMode?.length) cons.advanced.push({ focusMode: 'continuous' });
+        if (caps?.zoom) {
+          const mid = (caps.zoom.min + caps.zoom.max) / 2;
+          cons.advanced.push({ zoom: Math.min(Math.max(mid, caps.zoom.min), caps.zoom.max) });
+        }
+        if (cons.advanced.length) await track.applyConstraints(cons);
+      } catch(_) {}
     }catch(e){
       const map={NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
                  NotFoundError:'카메라 장치를 찾을 수 없습니다.',
@@ -301,60 +325,119 @@
     }
   }
 
-  // --- jsQR 폴백 (다운스케일 + 스로틀 + rVFC 우선). isResolved 콜백은 레이스용 옵션
+  // jsQR 폴백(중앙 크롭 + 디플리커 + 대비 스트레치)
   function jsqrFallback(isResolved){
-    const c=document.createElement('canvas');
-    const x=c.getContext('2d',{ willReadFrequently:true });
+    const c = document.createElement('canvas');
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.imageSmoothingEnabled = false;
 
-    const targetW = 560;   // 480~640 권장 (인식률↑ vs 발열)
-    const minGapMs = 100;  // ~10fps
-    let last = 0;
-    let cancel = false;
+    const target   = TARGET;
+    const minGapMs = FRAME_GAP;
+    let frame = 0, last = 0, cancel = false;
+    const stack = []; // Uint8ClampedArray 회색 프레임들
 
-    const decodeOnce = ()=>{
+    const drawDebug = (text, corners)=>{
+      if(!DEBUG) return;
+      ox.clearRect(0,0,overlay.width,overlay.height);
+      ox.fillStyle='rgba(0,0,0,.55)'; ox.fillRect(6,6, overlay.width*0.6, 28);
+      ox.fillStyle='#fff'; ox.font='16px ui-monospace,monospace'; ox.fillText(text, 14, 26);
+      if(corners){
+        ox.strokeStyle='lime'; ox.lineWidth=3; ox.beginPath();
+        ox.moveTo(corners.topLeft.x, corners.topLeft.y);
+        ox.lineTo(corners.topRight.x, corners.topRight.y);
+        ox.lineTo(corners.bottomRight.x, corners.bottomRight.y);
+        ox.lineTo(corners.bottomLeft.x, corners.bottomLeft.y);
+        ox.closePath(); ox.stroke();
+      }
+    };
+
+    const runOnce = ()=>{
       if(!running || cancel) return;
       if(video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
       const vw = video.videoWidth  || 640;
       const vh = video.videoHeight || 480;
-      const ratio = vh / vw;
-      c.width  = targetW;
-      c.height = Math.round(targetW * ratio);
+      const side = Math.min(vw, vh);
+      const sx = (vw - side) >> 1;
+      const sy = (vh - side) >> 1;
 
-      x.drawImage(video,0,0,c.width,c.height);
-      const img=x.getImageData(0,0,c.width,c.height);
-      const qr = jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
-      if(qr && qr.data){
-        if (typeof isResolved === 'function' && isResolved()) return; // 이미 다른 경로가 성공
+      c.width = target; c.height = target;
+      x.drawImage(video, sx, sy, side, side, 0, 0, target, target);
+
+      if (frame++ < WARMUP_FRAMES) { drawDebug('warming up…', null); return; }
+
+      // 그레이스케일
+      const img = x.getImageData(0, 0, target, target);
+      const buf = new Uint8ClampedArray(img.data.length);
+      for (let i=0;i<img.data.length;i+=4){
+        const r=img.data[i], g=img.data[i+1], b=img.data[i+2];
+        const y = (r*0.2126 + g*0.7152 + b*0.0722)|0;
+        buf[i]=buf[i+1]=buf[i+2]=y; buf[i+3]=255;
+      }
+      stack.push(buf);
+      if (stack.length > STACK_N) stack.shift();
+
+      // 디플리커: 최근 N프레임의 픽셀별 최솟값 합성(검은 모듈 유지)
+      if (stack.length === STACK_N){
+        for (let i=0;i<img.data.length;i+=4){
+          let m = 255;
+          for (let k=0;k<STACK_N;k++) if (stack[k][i] < m) m = stack[k][i];
+          img.data[i]=img.data[i+1]=img.data[i+2]=m;
+        }
+      } else {
+        // 스택이 덜 찬 초기엔 현재 프레임만 사용
+        for (let i=0;i<img.data.length;i+=4){
+          img.data[i]=img.data[i+1]=img.data[i+2]=buf[i];
+        }
+      }
+
+      // 대비 스트레치(약하게)
+      let lo=255, hi=0;
+      for (let i=0;i<img.data.length;i+=16){ const v=img.data[i]; if(v<lo)lo=v; if(v>hi)hi=v; }
+      const span=Math.max(40, hi-lo), a=255/span, b0=-a*lo;
+      for (let i=0;i<img.data.length;i+=4){
+        let v = img.data[i]; v = a*v + b0; if(v<0)v=0; if(v>255)v=255;
+        img.data[i]=img.data[i+1]=img.data[i+2]=v;
+      }
+
+      const t0 = performance.now();
+      const qr = jsQR(img.data, target, target, { inversionAttempts: 'attemptBoth' });
+      const t1 = performance.now();
+      const fps = Math.round(1000 / Math.max(1, (t1 - last || FRAME_GAP))); last = t1;
+
+      if (qr && qr.data){
+        if (typeof isResolved === 'function' && isResolved()) return; // 레이스 이미 성공
+        // 코너를 원본 좌표로 역매핑(대략)
+        const scale = side / target, offX = sx, offY = sy;
+        const map = p => ({ x: p.x*scale + offX, y: p.y*scale + offY });
+        const corners = {
+          topLeft:     map(qr.location.topLeftCorner),
+          topRight:    map(qr.location.topRightCorner),
+          bottomRight: map(qr.location.bottomRightCorner),
+          bottomLeft:  map(qr.location.bottomLeftCorner),
+        };
+        drawDebug(`decoded fps:${fps}`, corners);
+
         stop();
-        const parsed=parseQR(qr.data);
-        renderTable(parsed);
-        upsertRecord(parsed);
+        const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed); setMsg('');
+      } else {
+        drawDebug(`scanning… fps:${fps}`, null);
       }
     };
 
     const rVFC = video.requestVideoFrameCallback?.bind(video);
     if (rVFC) {
-      const onFrame = (now)=>{
-        if(!running || cancel) return;
-        if(now - last >= minGapMs){ last = now; decodeOnce(); }
-        rVFC(onFrame);
-      };
+      const onFrame = (now)=>{ if(!running || cancel) return; if(now - last >= minGapMs){ runOnce(); } rVFC(onFrame); };
       rVFC(onFrame);
     } else {
-      (function loop(){
-        if(!running || cancel) return;
-        const now = performance.now();
-        if(now - last >= minGapMs){ last = now; decodeOnce(); }
-        requestAnimationFrame(loop);
-      })();
+      (function loop(){ if(!running || cancel) return; const now=performance.now(); if(now - last >= minGapMs){ runOnce(); } requestAnimationFrame(loop); })();
     }
 
     const track = stream?.getVideoTracks?.()[0];
-    track && track.addEventListener?.('ended', ()=>{ cancel=true; });
+    track && track.addEventListener?.('ended', ()=>{ cancel = true; });
   }
 
-  // --- CSV 내보내기 (UTF-8 BOM)
+  // CSV
   function exportCSV(){
     if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
     const header=['스캔시각(KST)','비품번호','비품명','위치','사용자'];
@@ -365,7 +448,7 @@
     a.href=URL.createObjectURL(blob); a.download='qr_scans_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
   }
 
-  // --- 초기화: 저장/표/메시지/카메라 모두 리셋
+  // 초기화
   function clearAll(){
     if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
     records=[]; saveRecords(); renderList();
@@ -374,10 +457,10 @@
     stop(); // 카메라도 정지
   }
 
-  // --- 페이지 숨김 시 정지 (배터리/발열 절감)
+  // 페이지 숨김 시 정지
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stop(); } });
 
-  // --- 버튼 이벤트
+  // 버튼
   document.getElementById('startBtn').onclick = ()=> start();
   document.getElementById('exportBtn').onclick= exportCSV;
   document.getElementById('clearBtn').onclick = clearAll;
