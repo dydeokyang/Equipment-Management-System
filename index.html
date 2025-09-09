@@ -38,26 +38,25 @@
   button{font-size:16px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
   button:hover{border-color:#c9ced6}
 
-  /* ✅ 미리보기 컨테이너(안드로이드처럼 고정 비율/크기) */
+  /* 미리보기 컨테이너(고정 비율/크기) */
   #preview{
     position:relative;
     width:100%;
-    max-width:520px;       /* 필요 시 380px 등으로 조절 */
-    aspect-ratio: 1 / 1;   /* 1:1. 4/3 원하면 4 / 3 */
+    max-width:520px;
+    aspect-ratio: 1 / 1;   /* 4/3 원하면 4 / 3 */
     overflow:hidden;
     border:1px solid var(--border);
     border-radius:12px;
     margin:10px 0;
     box-shadow:var(--shadow);
-    display:none;          /* start()에서 보이기 */
+    display:none;          /* start()에서 보임 */
   }
-  /* 영상/오버레이는 박스 꽉 채우기 */
+  /* 영상/오버레이 */
   #video, #overlay{
     position:absolute; inset:0;
     width:100%; height:100%;
-    display:none;          /* start()에서 보이기 */
-    object-fit:cover;      /* 가운데 크롭해 꽉 채움 */
-    object-position:center;
+    display:none;          /* start()에서 보임 */
+    object-fit:cover; object-position:center;
     pointer-events:none;
   }
 
@@ -119,30 +118,31 @@
   <div id="list" class="list"></div>
 </div>
 
-<!-- jsQR: 상대경로(프로젝트 페이지에서도 안전) -->
+<!-- jsQR: 상대경로 -->
 <script src="libs/jsQR.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
 
 <script>
 (() => {
   // ===== 노브 =====
-  const DEBUG = false;     // 필요 시 true로 바꾸면 상태/박스 표시
-  const TARGET = 640;      // 560~720에서 기기별 조정
+  const DEBUG = false;
+  const TARGET = 640;      // 560~720
   const WARMUP_FRAMES = 6;
   const STACK_N = 3;
-  const FRAME_GAP = 80;    // 60~100 권장
+  const FRAME_GAP = 80;    // 60~100
 
-  const preview = document.getElementById('preview');
-  const video   = document.getElementById('video');
-  const overlay = document.getElementById('overlay');
-  const ox      = overlay.getContext('2d');
-  const msg     = document.getElementById('msg');
-  const tbody   = document.querySelector('#tbl tbody');
-  const listEl  = document.getElementById('list');
-  const countEl = document.getElementById('count');
+  const preview  = document.getElementById('preview');
+  const video    = document.getElementById('video');
+  const overlay  = document.getElementById('overlay');
+  const ox       = overlay.getContext('2d');
+  const msg      = document.getElementById('msg');
+  const tbody    = document.querySelector('#tbl tbody');
+  const listEl   = document.getElementById('list');
+  const countEl  = document.getElementById('count');
+  const startBtn = document.getElementById('startBtn');
 
   let stream = null, running = false;
 
-  // ★ 유령 재검출 방지 상태
+  // 유령 재검출 방지 상태
   let SESSION_ID = 0;
   let lastAccepted = { value: null, at: 0 };
 
@@ -218,7 +218,6 @@
       setMsg('');
     }
     saveRecords(); renderList();
-    // 결과 보이도록 스크롤
     document.querySelector('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
@@ -240,7 +239,12 @@
 
   function esc(s){ return String(s??'').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
-  // ★ 완전 정지 + 프레임 초기화
+  // 버튼 상태 업데이트
+  function updateStartBtn(){
+    startBtn.textContent = running ? '카메라 끄기' : '카메라 시작';
+  }
+
+  // 완전 정지 + 프레임 초기화
   function stop(){
     running=false;
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
@@ -250,15 +254,23 @@
     ox && ox.clearRect(0,0,overlay.width,overlay.height);
     video.style.display='none';
     overlay.style.display='none';
-    // 미리보기 박스를 접고 싶으면 아래 주석 해제
-    // preview.style.display='none';
+    preview.style.display='none';
+    updateStartBtn();
   }
 
   function expect(cond, message){
     if(!cond){ setMsg(message); throw new Error(message); }
   }
 
-  // 카메라 시작 -----------------------------------------------------------
+  // 카메라 시작(토글) -----------------------------------------------------
+  async function handleStartClick(){
+    if (running) { // 수동 끄기
+      stop();
+      return;
+    }
+    await start(); // 시작
+  }
+
   async function start(){
     expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. libs/jsQR.js 경로(배포 여부)를 확인하세요.');
     expect(location.protocol==='https:' || location.hostname==='localhost', 'HTTPS 또는 localhost에서만 동작합니다.');
@@ -266,21 +278,25 @@
 
     try{
       stop(); // 이전 세션 정리
-      const mySession = ++SESSION_ID; // ★ 새 세션 번호
+      const mySession = ++SESSION_ID;
 
       // 미리보기/영상 보이기
       preview.style.display='block';
       video.style.display='block';
+      overlay.style.display = DEBUG ? 'block' : 'none';
 
       // iOS 자동재생/인라인
       video.setAttribute('playsinline',''); video.setAttribute('muted',''); video.muted = true;
+
+      // UI: 시작 중 잠깐 비활성화
+      startBtn.disabled = true;
 
       stream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
         audio:false
       });
 
-      // ★ 새 스트림 연결 전에 완전 초기화
+      // 새 스트림 연결 전에 완전 초기화
       video.srcObject = null;
       video.load();
       video.srcObject = stream;
@@ -297,12 +313,14 @@
 
       overlay.width  = video.videoWidth  || 640;
       overlay.height = video.videoHeight || 480;
-      overlay.style.display = DEBUG ? 'block' : 'none';
 
       running = true;
+      updateStartBtn();
+      startBtn.disabled = false;
+
       setMsg(DEBUG ? `카메라 시작: ${overlay.width}x${overlay.height} / iOS:${isIOS?'Y':'N'}` : 'QR을 화면 중앙에 크게 맞춰주세요…');
 
-      // ★ 세션 내 허상 방지: 같은 값이 연속 2프레임 이상일 때만 채택 + 최근 1.5초 동일값 무시
+      // 세션 내 허상 방지
       const confirm = { value:null, count:0 };
       const acceptIfFresh = (val)=>{
         const now = performance.now();
@@ -316,13 +334,12 @@
         return false;
       };
 
-      // iOS: jsQR 폴백만 사용
       if (isIOS) { jsqrFallback(()=>SESSION_ID!==mySession, acceptIfFresh); return; }
 
-      // AND/데스크: 네이티브 + jsQR 레이스
+      // AND/데스크: 레이스
       let resolved = false;
       const win = (val)=>{
-        if (resolved) return true;
+        if (!running || resolved) return true;
         if (val && acceptIfFresh(val)) {
           resolved = true;
           stop();
@@ -334,7 +351,6 @@
         return false;
       };
 
-      // A) BarcodeDetector
       const runDetector = async ()=>{
         if(!('BarcodeDetector' in window)) return;
         const detector = new BarcodeDetector({ formats:['qr_code'] });
@@ -350,7 +366,6 @@
         loop();
       };
 
-      // B) jsQR 폴백(소폭 딜레이 후 시작)
       const runJsQR = ()=>{
         setTimeout(()=>{ if(!resolved && running && SESSION_ID===mySession) jsqrFallback(()=>resolved || SESSION_ID!==mySession, acceptIfFresh); }, 400);
       };
@@ -358,7 +373,7 @@
       runDetector();
       runJsQR();
 
-      // (선택) 카메라 힌트: 초점/줌
+      // (선택) 초점/줌 힌트
       try {
         const track = stream?.getVideoTracks?.()[0];
         const caps  = track?.getCapabilities?.() || {};
@@ -371,16 +386,18 @@
         if (cons.advanced.length) await track.applyConstraints(cons);
       } catch(_) {}
     }catch(e){
+      startBtn.disabled = false;
       const map={NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
                  NotFoundError:'카메라 장치를 찾을 수 없습니다.',
                  NotReadableError:'다른 앱이 카메라 사용 중입니다.',
                  OverconstrainedError:'카메라 조건을 만족하지 못했습니다.',
                  SecurityError:'보안 정책으로 차단되었습니다.'};
       setMsg(map[e.name]||`카메라 오류: ${e.name||e}`);
+      stop();
     }
   }
 
-  // jsQR 폴백(중앙 크롭 + 디플리커 + 대비 스트레치)
+  // jsQR 폴백
   function jsqrFallback(isCanceled, acceptIfFresh){
     const c = document.createElement('canvas');
     const x = c.getContext('2d', { willReadFrequently: true });
@@ -389,7 +406,7 @@
     const target   = TARGET;
     const minGapMs = FRAME_GAP;
     let frame = 0, last = 0, cancel = false;
-    const stack = []; // 회색 프레임 스택
+    const stack = [];
 
     const drawDebug = (text, corners)=>{
       if(!DEBUG) return;
@@ -421,7 +438,6 @@
 
       if (frame++ < WARMUP_FRAMES) { drawDebug('warming up…', null); return; }
 
-      // 그레이 변환
       const img = x.getImageData(0, 0, target, target);
       const buf = new Uint8ClampedArray(img.data.length);
       for (let i=0;i<img.data.length;i+=4){
@@ -432,7 +448,6 @@
       stack.push(buf);
       if (stack.length > STACK_N) stack.shift();
 
-      // 디플리커(최솟값 합성)
       if (stack.length === STACK_N){
         for (let i=0;i<img.data.length;i+=4){
           let m = 255;
@@ -445,7 +460,6 @@
         }
       }
 
-      // 약한 대비 스트레치
       let lo=255, hi=0;
       for (let i=0;i<img.data.length;i+=16){ const v=img.data[i]; if(v<lo)lo=v; if(v>hi)hi=v; }
       const span=Math.max(40, hi-lo), a=255/span, b0=-a*lo;
@@ -459,24 +473,11 @@
       const fps = Math.round(1000 / Math.max(1, (t1 - last || minGapMs))); last = t1;
 
       if (qr && qr.data){
-        // ★ 허상 방지: 연속확인 + 쿨다운
-        if (acceptIfFresh && !acceptIfFresh(qr.data)) {
-          drawDebug(`checking… fps:${fps}`, null);
-          return;
-        }
-        // 성공 처리
-        const scale = side / target, offX = sx, offY = sy;
-        const map = p => ({ x: p.x*scale + offX, y: p.y*scale + offY });
-        const corners = {
-          topLeft:     map(qr.location.topLeftCorner),
-          topRight:    map(qr.location.topRightCorner),
-          bottomRight: map(qr.location.bottomRightCorner),
-          bottomLeft:  map(qr.location.bottomLeftCorner),
-        };
-        drawDebug(`decoded fps:${fps}`, corners);
+        if (acceptIfFresh && !acceptIfFresh(qr.data)) { drawDebug(`checking… fps:${fps}`, null); return; }
 
+        // 성공: 자동 정지 + 데이터 반영
         stop();
-        const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed); setMsg('');
+        const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed);
       } else {
         drawDebug(`scanning… fps:${fps}`, null);
       }
@@ -509,16 +510,17 @@
   function clearAll(){
     if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
     records=[]; saveRecords(); renderList();
-    tbody.innerHTML = ''; // 비품정보 표 비움
+    tbody.innerHTML = '';
     setMsg('초기화 완료');
-    stop(); // 카메라도 정지
+    stop();
   }
 
-  // 페이지 숨김 시 정지
+  // 페이지 숨김/이탈 시 정지
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stop(); } });
+  window.addEventListener('beforeunload', ()=>{ try{ stop(); }catch(_){} });
 
   // 버튼
-  document.getElementById('startBtn').onclick = ()=> start();
+  startBtn.onclick = handleStartClick;
   document.getElementById('exportBtn').onclick= exportCSV;
   document.getElementById('clearBtn').onclick = clearAll;
 })();
