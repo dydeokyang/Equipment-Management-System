@@ -37,9 +37,30 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
   button{font-size:16px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
   button:hover{border-color:#c9ced6}
-  #preview{position:relative; display:inline-block}
-  #video{width:100%;max-width:520px;display:none;border:1px solid var(--border);border-radius:12px;margin:10px 0;box-shadow:var(--shadow)}
-  #overlay{display:none; position:absolute; inset:0; width:100%; max-width:520px; pointer-events:none}
+
+  /* ✅ 미리보기 컨테이너(안드로이드처럼 고정 비율/크기) */
+  #preview{
+    position:relative;
+    width:100%;
+    max-width:520px;       /* 필요 시 380px 등으로 조절 */
+    aspect-ratio: 1 / 1;   /* 1:1. 4/3 원하면 4 / 3 */
+    overflow:hidden;
+    border:1px solid var(--border);
+    border-radius:12px;
+    margin:10px 0;
+    box-shadow:var(--shadow);
+    display:none;          /* start()에서 보이기 */
+  }
+  /* 영상/오버레이는 박스 꽉 채우기 */
+  #video, #overlay{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    display:none;          /* start()에서 보이기 */
+    object-fit:cover;      /* 가운데 크롭해 꽉 채움 */
+    object-position:center;
+    pointer-events:none;
+  }
+
   .card{background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px;margin:14px 0}
   .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
   table{border-collapse:separate;border-spacing:0;width:100%}
@@ -98,18 +119,19 @@
   <div id="list" class="list"></div>
 </div>
 
-<!-- jsQR (minified, 로컬 고정 버전 사용) -->
+<!-- jsQR: 상대경로(프로젝트 페이지에서도 안전) -->
 <script src="libs/jsQR.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
 
 <script>
 (() => {
-  // ===== 설정 노브(아이폰 인식력 우선) =====
-  const DEBUG = true;      // 상태 텍스트/박스 표시 (테스트 끝나면 false로)
-  const TARGET = 720;      // 다운스케일 해상도(선명도↑). 640~800에서 조절
-  const WARMUP_FRAMES = 6; // 초점/노출 안정까지 스킵
-  const STACK_N = 3;       // 디플리커 프레임 수(모니터 QR에 유리)
-  const FRAME_GAP = 60;    // 디코드 주기(ms). 50~80 추천
+  // ===== 노브 =====
+  const DEBUG = false;     // 필요 시 true로 바꾸면 상태/박스 표시
+  const TARGET = 640;      // 560~720에서 기기별 조정
+  const WARMUP_FRAMES = 6;
+  const STACK_N = 3;
+  const FRAME_GAP = 80;    // 60~100 권장
 
+  const preview = document.getElementById('preview');
   const video   = document.getElementById('video');
   const overlay = document.getElementById('overlay');
   const ox      = overlay.getContext('2d');
@@ -120,7 +142,10 @@
 
   let stream = null, running = false;
 
-  // iOS 감지 (iPhone/iPad WebKit)
+  // ★ 유령 재검출 방지 상태
+  let SESSION_ID = 0;
+  let lastAccepted = { value: null, at: 0 };
+
   const isIOS = (() => {
     const ua = navigator.userAgent || '';
     const iOSDevice = /iP(hone|ad|od)/.test(ua);
@@ -129,7 +154,7 @@
     return (iOSDevice && webkit) || isCriOS;
   })();
 
-  // 저장 -----------------------------------------------------------------
+  // 저장
   let records = loadRecords(); renderList();
   function loadRecords(){ try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); } catch(e){ return []; } }
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
@@ -143,10 +168,8 @@
   }
   function nowKST(){ return fmtKST(new Date()); }
 
-  // 중복 키
   function dedupeKey(o){ const id=(o.id??'').trim(); return id ? 'ID:'+id.toLowerCase() : 'RAW:'+String(o.raw??''); }
 
-  // QR 파서
   function parseQR(text){
     let obj = {};
     try { const j = JSON.parse(text); if (j && typeof j==='object') obj = j; }
@@ -173,7 +196,7 @@
   ];
 
   function renderTable(o){
-    tbody.innerHTML=''; 
+    tbody.innerHTML='';
     FIELD_ORDER.forEach(({key,label,class:cls})=>{
       const tr=document.createElement('tr');
       const th=document.createElement('th'); th.className='key'; th.innerHTML=`<span class="chip ${cls}">${label}</span>`;
@@ -195,6 +218,8 @@
       setMsg('');
     }
     saveRecords(); renderList();
+    // 결과 보이도록 스크롤
+    document.querySelector('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
   function renderList(){
@@ -215,12 +240,18 @@
 
   function esc(s){ return String(s??'').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
+  // ★ 완전 정지 + 프레임 초기화
   function stop(){
     running=false;
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    try { video.pause(); } catch(_) {}
     video.srcObject=null;
+    video.load(); // 이전 프레임 끊기
+    ox && ox.clearRect(0,0,overlay.width,overlay.height);
     video.style.display='none';
     overlay.style.display='none';
+    // 미리보기 박스를 접고 싶으면 아래 주석 해제
+    // preview.style.display='none';
   }
 
   function expect(cond, message){
@@ -229,26 +260,32 @@
 
   // 카메라 시작 -----------------------------------------------------------
   async function start(){
-    // 즉시 실패 원인 노출
-    expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. /libs/jsQR.js 경로(배포 여부)를 확인하세요.');
+    expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. libs/jsQR.js 경로(배포 여부)를 확인하세요.');
     expect(location.protocol==='https:' || location.hostname==='localhost', 'HTTPS 또는 localhost에서만 동작합니다.');
     expect(!!navigator.mediaDevices?.getUserMedia, '이 브라우저는 카메라 API를 지원하지 않습니다.');
 
     try{
       stop(); // 이전 세션 정리
+      const mySession = ++SESSION_ID; // ★ 새 세션 번호
 
-      // iOS 자동재생/인라인 재생 안전장치
-      video.setAttribute('playsinline','');
-      video.setAttribute('muted','');
-      video.muted = true;
+      // 미리보기/영상 보이기
+      preview.style.display='block';
+      video.style.display='block';
+
+      // iOS 자동재생/인라인
+      video.setAttribute('playsinline',''); video.setAttribute('muted',''); video.muted = true;
 
       stream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
         audio:false
       });
+
+      // ★ 새 스트림 연결 전에 완전 초기화
+      video.srcObject = null;
+      video.load();
       video.srcObject = stream;
 
-      // 워밍업: 프레임 준비까지 대기
+      // 프레임 준비 대기
       if (video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
         await new Promise(resolve => {
           const onReady = ()=>resolve();
@@ -258,25 +295,35 @@
       }
       await video.play();
 
-      // 오버레이 초기화
       overlay.width  = video.videoWidth  || 640;
       overlay.height = video.videoHeight || 480;
       overlay.style.display = DEBUG ? 'block' : 'none';
 
-      video.style.display='block';
       running = true;
+      setMsg(DEBUG ? `카메라 시작: ${overlay.width}x${overlay.height} / iOS:${isIOS?'Y':'N'}` : 'QR을 화면 중앙에 크게 맞춰주세요…');
 
-      if (DEBUG) setMsg(`카메라 시작: ${overlay.width}x${overlay.height} / iOS:${isIOS?'Y':'N'}`);
-      else setMsg('QR을 화면 중앙에 크게 맞춰주세요…');
+      // ★ 세션 내 허상 방지: 같은 값이 연속 2프레임 이상일 때만 채택 + 최근 1.5초 동일값 무시
+      const confirm = { value:null, count:0 };
+      const acceptIfFresh = (val)=>{
+        const now = performance.now();
+        if (val && lastAccepted.value === val && now - lastAccepted.at < 1500) return false;
+        if (confirm.value === val) confirm.count++;
+        else { confirm.value = val; confirm.count = 1; }
+        if (confirm.value && confirm.count >= 2) {
+          lastAccepted = { value: confirm.value, at: now };
+          return true;
+        }
+        return false;
+      };
 
-      // iOS: 네이티브 없음 → jsQR 폴백만 사용
-      if (isIOS) { jsqrFallback(); return; }
+      // iOS: jsQR 폴백만 사용
+      if (isIOS) { jsqrFallback(()=>SESSION_ID!==mySession, acceptIfFresh); return; }
 
-      // AND/데스크톱: 네이티브 + jsQR 레이스 (먼저 잡는 쪽이 승리)
+      // AND/데스크: 네이티브 + jsQR 레이스
       let resolved = false;
       const win = (val)=>{
         if (resolved) return true;
-        if (val) {
+        if (val && acceptIfFresh(val)) {
           resolved = true;
           stop();
           const parsed = parseQR(val);
@@ -287,31 +334,31 @@
         return false;
       };
 
-      // A) BarcodeDetector 루프 (grabFrame은 기기별 이슈 → detect(video)만)
+      // A) BarcodeDetector
       const runDetector = async ()=>{
         if(!('BarcodeDetector' in window)) return;
         const detector = new BarcodeDetector({ formats:['qr_code'] });
         const loop = async ()=>{
-          if(!running || resolved) return;
+          if(!running || resolved || SESSION_ID!==mySession) return;
           try{
             const found = await detector.detect(video);
             const val = found && found[0]?.rawValue;
             if (win(val)) return;
-          }catch(_) { /* 계속 */ }
+          }catch(_) {}
           requestAnimationFrame(loop);
         };
         loop();
       };
 
-      // B) jsQR 폴백 루프 (소폭 딜레이 후 시작 → CPU 분배)
+      // B) jsQR 폴백(소폭 딜레이 후 시작)
       const runJsQR = ()=>{
-        setTimeout(()=>{ if(!resolved && running) jsqrFallback(()=>resolved); }, 400);
+        setTimeout(()=>{ if(!resolved && running && SESSION_ID===mySession) jsqrFallback(()=>resolved || SESSION_ID!==mySession, acceptIfFresh); }, 400);
       };
 
       runDetector();
       runJsQR();
 
-      // (선택) 카메라 힌트: 일부 기기에서 초점/줌 도움(무시될 수 있음)
+      // (선택) 카메라 힌트: 초점/줌
       try {
         const track = stream?.getVideoTracks?.()[0];
         const caps  = track?.getCapabilities?.() || {};
@@ -334,7 +381,7 @@
   }
 
   // jsQR 폴백(중앙 크롭 + 디플리커 + 대비 스트레치)
-  function jsqrFallback(isResolved){
+  function jsqrFallback(isCanceled, acceptIfFresh){
     const c = document.createElement('canvas');
     const x = c.getContext('2d', { willReadFrequently: true });
     x.imageSmoothingEnabled = false;
@@ -342,7 +389,7 @@
     const target   = TARGET;
     const minGapMs = FRAME_GAP;
     let frame = 0, last = 0, cancel = false;
-    const stack = []; // Uint8ClampedArray 회색 프레임들
+    const stack = []; // 회색 프레임 스택
 
     const drawDebug = (text, corners)=>{
       if(!DEBUG) return;
@@ -361,13 +408,13 @@
 
     const runOnce = ()=>{
       if(!running || cancel) return;
+      if (typeof isCanceled==='function' && isCanceled()) return;
       if(video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
       const vw = video.videoWidth  || 640;
       const vh = video.videoHeight || 480;
       const side = Math.min(vw, vh);
-      const sx = (vw - side) >> 1;
-      const sy = (vh - side) >> 1;
+      const sx = (vw - side) >> 1, sy = (vh - side) >> 1;
 
       c.width = target; c.height = target;
       x.drawImage(video, sx, sy, side, side, 0, 0, target, target);
@@ -407,14 +454,17 @@
         img.data[i]=img.data[i+1]=img.data[i+2]=v;
       }
 
-      const t0 = performance.now();
-      const qr = jsQR(img.data, target, target, { inversionAttempts: 'attemptBoth' });
       const t1 = performance.now();
+      const qr = jsQR(img.data, target, target, { inversionAttempts: 'attemptBoth' });
       const fps = Math.round(1000 / Math.max(1, (t1 - last || minGapMs))); last = t1;
 
       if (qr && qr.data){
-        if (typeof isResolved === 'function' && isResolved()) return; // 레이스 이미 성공
-        // 코너 역매핑(원본 좌표로)
+        // ★ 허상 방지: 연속확인 + 쿨다운
+        if (acceptIfFresh && !acceptIfFresh(qr.data)) {
+          drawDebug(`checking… fps:${fps}`, null);
+          return;
+        }
+        // 성공 처리
         const scale = side / target, offX = sx, offY = sy;
         const map = p => ({ x: p.x*scale + offX, y: p.y*scale + offY });
         const corners = {
@@ -434,10 +484,10 @@
 
     const rVFC = video.requestVideoFrameCallback?.bind(video);
     if (rVFC) {
-      const onFrame = (now)=>{ if(!running || cancel) return; if(now - last >= minGapMs){ runOnce(); } rVFC(onFrame); };
+      const onFrame = (now)=>{ if(!running || cancel) return; if (typeof isCanceled==='function' && isCanceled()) return; if(now - last >= minGapMs){ runOnce(); } rVFC(onFrame); };
       rVFC(onFrame);
     } else {
-      (function loop(){ if(!running || cancel) return; const now=performance.now(); if(now - last >= minGapMs){ runOnce(); } requestAnimationFrame(loop); })();
+      (function loop(){ if(!running || cancel) return; if (typeof isCanceled==='function' && isCanceled()) return; const now=performance.now(); if(now - last >= minGapMs){ runOnce(); } requestAnimationFrame(loop); })();
     }
 
     const track = stream?.getVideoTracks?.()[0];
@@ -475,6 +525,3 @@
 </script>
 </body>
 </html>
-
-
-
