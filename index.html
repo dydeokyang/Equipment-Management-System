@@ -5,32 +5,36 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (중복방지 + CSV + KST시간 + 깔끔한표)</title>
+<title>QR 스캐너 (비품번호/비품명/위치/사용자 · 중복방지+CSV+KST)</title>
 
 <!-- 캐시 약화 메타 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 
-<!-- 자동 버전 쿼리(캐시 버스터): GitHub Pages(Liquid)로 자동 갱신 -->
+<!-- 자동 버전 쿼리(깃허브 페이지에서 커밋마다 자동 갱신) -->
 <script>
 (function () {
-  const APP_VERSION = '{{ site.time | date: "%Y%m%d%H%M%S" }}'; // 커밋마다 자동으로 새 값
+  const APP_VERSION = '{{ site.time | date: "%Y%m%d%H%M%S" }}';
   const url = new URL(location.href);
   if (url.searchParams.get('v') !== APP_VERSION) {
     url.searchParams.set('v', APP_VERSION);
-    location.replace(url.toString()); // 한 번만 새로고침
+    location.replace(url.toString());
   }
 })();
 </script>
 
 <style>
   :root{
-    --bg:#fff; --fg:#181a1b; --muted:#666; --border:#e6e8eb;
-    --accent:#2f6feb; --thead:#f8fafc; --shadow:0 4px 14px rgba(0,0,0,.08);
+    --bg:#fff; --fg:#16181b; --muted:#667085; --border:#e6e8eb;
+    --accent:#2563eb; --thead:#f8fafc; --shadow:0 4px 14px rgba(0,0,0,.08);
+    --chip-id:#eef2ff;     --chip-id-text:#1d4ed8;
+    --chip-name:#ecfdf5;   --chip-name-text:#065f46;
+    --chip-loc:#fff7ed;    --chip-loc-text:#9a3412;
+    --chip-owner:#fef2f2;  --chip-owner-text:#b91c1c;
   }
   body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;background:var(--bg);color:var(--fg);
-       max-width:840px;margin:28px auto;padding:0 16px}
+       max-width:860px;margin:28px auto;padding:0 16px}
   h1{font-size:22px;margin:14px 0}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
   button{font-size:16px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
@@ -40,15 +44,32 @@
   .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
   table{border-collapse:separate;border-spacing:0;width:100%}
   th,td{padding:12px 12px;border-bottom:1px solid var(--border);text-align:left;word-break:break-all}
-  thead th{background:var(--thead);font-weight:600}
   tbody tr:nth-child(even){background:#fcfdff}
-  tbody tr:first-child td, tbody tr:first-child th{border-top-left-radius:8px;border-top-right-radius:8px}
-  tbody tr:last-child td, tbody tr:last-child th{border-bottom-left-radius:8px;border-bottom-right-radius:8px;border-bottom:0}
+  tbody tr:last-child td, tbody tr:last-child th{border-bottom:0}
   #msg{color:#b00;margin:6px 2px}
   .count{margin-left:auto;color:#333;font-size:14px}
-  ul{padding-left:18px;margin:8px 0}
   .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#334155;font-size:12px;margin-left:6px}
+
+  /* 라벨 셀을 칩처럼 */
+  th.key{font-weight:600;border:0;background:transparent;padding:6px 0}
+  .chip{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px}
+  .chip.id   {background:var(--chip-id);   color:var(--chip-id-text)}
+  .chip.name {background:var(--chip-name); color:var(--chip-name-text)}
+  .chip.loc  {background:var(--chip-loc);  color:var(--chip-loc-text)}
+  .chip.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
+
+  /* 최근 저장 목록을 카드+배지로 */
+  .list{display:grid;grid-template-columns:1fr;gap:12px}
+  @media (min-width:680px){ .list{grid-template-columns:1fr 1fr} }
+  .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;box-shadow:var(--shadow)}
+  .item .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .item .time{font-size:13px;color:#334155;background:#f1f5f9;border-radius:6px;padding:4px 8px}
+  .badges{display:flex;flex-wrap:wrap;gap:6px}
+  .badge{font-size:12px;border-radius:999px;padding:3px 8px}
+  .badge.id   {background:var(--chip-id);   color:var(--chip-id-text)}
+  .badge.name {background:var(--chip-name); color:var(--chip-name-text)}
+  .badge.loc  {background:var(--chip-loc);  color:var(--chip-loc-text)}
+  .badge.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
 </style>
 </head>
 <body>
@@ -73,9 +94,9 @@
 </div>
 
 <div class="card">
-  <h2>최근 저장 목록 <span class="pill mono">KST 기준</span></h2>
-  <div class="subtitle">같은 항목을 다시 스캔해도 중복 저장되지 않고, 시간만 갱신됩니다.</div>
-  <ul id="list"></ul>
+  <h2>최근 저장 목록 <span class="mono" style="font-size:12px;color:#475569">(KST 기준)</span></h2>
+  <div class="subtitle">같은 항목을 다시 스캔해도 중복 저장하지 않고, 시간만 갱신합니다.</div>
+  <div id="list" class="list"></div>
 </div>
 
 <!-- jsQR 폴백용 -->
@@ -101,8 +122,7 @@
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
   function setMsg(t){ msg.textContent = t || ''; }
 
-  // === 시간 유틸 ===
-  // (1) 서울시간(KST, Asia/Seoul) 보기 좋은 포맷: YYYY-MM-DD HH:mm:ss
+  // === 시간 유틸 (디바이스 시계 기준) ===
   function fmtKST(d){
     const parts = new Intl.DateTimeFormat('ko-KR',{
       timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
@@ -111,7 +131,6 @@
     const get = t => parts.find(p=>p.type===t)?.value || '';
     return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
   }
-  // (2) 현재 시각을 KST/UTC 모두 반환 (디바이스 시계 기준)
   function nowTimes(){
     const now = new Date();
     return { kst: fmtKST(now), utc: now.toISOString() };
@@ -160,26 +179,29 @@
     };
   }
 
+  // 화면 표시는 한글 라벨 & 칩 색상
+  const FIELD_ORDER = [
+    {key:'id',    label:'비품번호', class:'id'},
+    {key:'name',  label:'비품명',   class:'name'},
+    {key:'loc',   label:'위치',     class:'loc'},
+    {key:'owner', label:'사용자',   class:'owner'},
+  ];
+
   function renderTable(o){
     tbody.innerHTML = '';
-    const rows = [
-      ['id', o.id],
-      ['name', o.name],
-      ['loc', o.loc],
-      ['owner', o.owner]
-    ];
-    rows.forEach(([k,v])=>{
+    FIELD_ORDER.forEach(({key,label, class:cls})=>{
       const tr=document.createElement('tr');
-      const th=document.createElement('th'); th.textContent=k;
-      const td=document.createElement('td'); td.textContent=v;
+      const th=document.createElement('th'); th.className='key';
+      th.innerHTML = `<span class="chip ${cls}">${label}</span>`;
+      const td=document.createElement('td'); td.textContent = o[key] ?? '';
       tr.append(th,td); tbody.appendChild(tr);
     });
   }
 
-  // 중복 방지 업서트: 같은 dedupeKey면 추가하지 않고 시간 갱신 + 최신으로 이동
+  // 중복 방지 업서트
   function upsertRecord(o){
     const key = dedupeKey(o);
-    const t   = nowTimes(); // ★ 디바이스 시간 사용 (kst/utc 저장)
+    const t   = nowTimes();
     const idx = records.findIndex(r => (r._key === key));
     if (idx >= 0) {
       const updated = {
@@ -205,11 +227,24 @@
     listEl.innerHTML = '';
     countEl.textContent = `저장 ${records.length}건`;
     records.slice().reverse().forEach(r=>{
-      const li=document.createElement('li');
-      li.innerHTML = `<span class="mono">${r.scanned_at_kst}</span> | id:${r.id} | name:${r.name} | loc:${r.loc} | owner:${r.owner}`;
-      listEl.appendChild(li);
+      const card = document.createElement('div');
+      card.className = 'item';
+      card.innerHTML = `
+        <div class="head">
+          <div class="time mono">${r.scanned_at_kst}</div>
+        </div>
+        <div class="badges">
+          <span class="badge id">비품번호: ${esc(r.id)}</span>
+          <span class="badge name">비품명: ${esc(r.name)}</span>
+          <span class="badge loc">위치: ${esc(r.loc)}</span>
+          <span class="badge owner">사용자: ${esc(r.owner)}</span>
+        </div>
+      `;
+      listEl.appendChild(card);
     });
   }
+
+  function esc(s){ return String(s ?? '').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
   function stop(){
     running=false;
@@ -302,15 +337,15 @@
     })();
   }
 
-  // CSV 내보내기 (UTF-8 BOM으로 엑셀 한글 깨짐 방지)
+  // CSV 내보내기 (UTF-8 BOM으로 엑셀 한글 깨짐 방지) — 컬럼명도 한글로
   function exportCSV(){
     if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
-    const header = ['scanned_at_kst','scanned_at_utc','id','name','loc','owner'];
+    const header = ['스캔시각(KST)','스캔시각(UTC)','비품번호','비품명','위치','사용자'];
     const rows = records.map(r=>[
       r.scanned_at_kst, r.scanned_at_utc, r.id, r.name, r.loc, r.owner
     ]);
-    const esc = v => `"${String(v??'').replace(/"/g,'""')}"`;
-    const lines = [header.map(esc).join(','), ...rows.map(row=>row.map(esc).join(','))].join('\r\n');
+    const escCSV = v => `"${String(v??'').replace(/"/g,'""')}"`;
+    const lines = [header.map(escCSV).join(','), ...rows.map(row=>row.map(escCSV).join(','))].join('\r\n');
     const blob = new Blob(["\ufeff"+lines], {type:'text/csv;charset=utf-8;'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
