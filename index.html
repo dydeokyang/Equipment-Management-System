@@ -103,12 +103,12 @@
 
 <script>
 (() => {
-  // ===== 설정 노브 =====
-  const DEBUG = false;     // true로 하면 오버레이에 상태/박스 표시
-  const TARGET = 640;      // 다운스케일 해상도(480~720 사이에서 조절)
-  const WARMUP_FRAMES = 8; // 시작 후 초점/노출 안정화 프레임 스킵 수
-  const STACK_N = 3;       // 디플리커용 프레임 합성 개수(모니터 QR에 유리)
-  const FRAME_GAP = 80;    // 디코드 주기(ms). 60~120 권장
+  // ===== 설정 노브(아이폰 인식력 우선) =====
+  const DEBUG = true;      // 상태 텍스트/박스 표시 (테스트 끝나면 false로)
+  const TARGET = 720;      // 다운스케일 해상도(선명도↑). 640~800에서 조절
+  const WARMUP_FRAMES = 6; // 초점/노출 안정까지 스킵
+  const STACK_N = 3;       // 디플리커 프레임 수(모니터 QR에 유리)
+  const FRAME_GAP = 60;    // 디코드 주기(ms). 50~80 추천
 
   const video   = document.getElementById('video');
   const overlay = document.getElementById('overlay');
@@ -223,10 +223,16 @@
     overlay.style.display='none';
   }
 
+  function expect(cond, message){
+    if(!cond){ setMsg(message); throw new Error(message); }
+  }
+
   // 카메라 시작 -----------------------------------------------------------
   async function start(){
-    if(location.protocol!=='https:' && location.hostname!=='localhost'){ setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.'); return; }
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.'); return; }
+    // 즉시 실패 원인 노출
+    expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. /lib/jsqr.min.js 경로(배포 여부)를 확인하세요.');
+    expect(location.protocol==='https:' || location.hostname==='localhost', 'HTTPS 또는 localhost에서만 동작합니다.');
+    expect(!!navigator.mediaDevices?.getUserMedia, '이 브라우저는 카메라 API를 지원하지 않습니다.');
 
     try{
       stop(); // 이전 세션 정리
@@ -259,7 +265,9 @@
 
       video.style.display='block';
       running = true;
-      setMsg('QR을 화면 중앙에 크게 맞춰주세요…');
+
+      if (DEBUG) setMsg(`카메라 시작: ${overlay.width}x${overlay.height} / iOS:${isIOS?'Y':'N'}`);
+      else setMsg('QR을 화면 중앙에 크게 맞춰주세요…');
 
       // iOS: 네이티브 없음 → jsQR 폴백만 사용
       if (isIOS) { jsqrFallback(); return; }
@@ -279,7 +287,7 @@
         return false;
       };
 
-      // A) BarcodeDetector 루프 (grabFrame은 기기별 이슈 → detect(video) 경로만)
+      // A) BarcodeDetector 루프 (grabFrame은 기기별 이슈 → detect(video)만)
       const runDetector = async ()=>{
         if(!('BarcodeDetector' in window)) return;
         const detector = new BarcodeDetector({ formats:['qr_code'] });
@@ -339,7 +347,7 @@
     const drawDebug = (text, corners)=>{
       if(!DEBUG) return;
       ox.clearRect(0,0,overlay.width,overlay.height);
-      ox.fillStyle='rgba(0,0,0,.55)'; ox.fillRect(6,6, overlay.width*0.6, 28);
+      ox.fillStyle='rgba(0,0,0,.55)'; ox.fillRect(6,6, overlay.width*0.7, 28);
       ox.fillStyle='#fff'; ox.font='16px ui-monospace,monospace'; ox.fillText(text, 14, 26);
       if(corners){
         ox.strokeStyle='lime'; ox.lineWidth=3; ox.beginPath();
@@ -366,7 +374,7 @@
 
       if (frame++ < WARMUP_FRAMES) { drawDebug('warming up…', null); return; }
 
-      // 그레이스케일
+      // 그레이 변환
       const img = x.getImageData(0, 0, target, target);
       const buf = new Uint8ClampedArray(img.data.length);
       for (let i=0;i<img.data.length;i+=4){
@@ -377,7 +385,7 @@
       stack.push(buf);
       if (stack.length > STACK_N) stack.shift();
 
-      // 디플리커: 최근 N프레임의 픽셀별 최솟값 합성(검은 모듈 유지)
+      // 디플리커(최솟값 합성)
       if (stack.length === STACK_N){
         for (let i=0;i<img.data.length;i+=4){
           let m = 255;
@@ -385,13 +393,12 @@
           img.data[i]=img.data[i+1]=img.data[i+2]=m;
         }
       } else {
-        // 스택이 덜 찬 초기엔 현재 프레임만 사용
         for (let i=0;i<img.data.length;i+=4){
           img.data[i]=img.data[i+1]=img.data[i+2]=buf[i];
         }
       }
 
-      // 대비 스트레치(약하게)
+      // 약한 대비 스트레치
       let lo=255, hi=0;
       for (let i=0;i<img.data.length;i+=16){ const v=img.data[i]; if(v<lo)lo=v; if(v>hi)hi=v; }
       const span=Math.max(40, hi-lo), a=255/span, b0=-a*lo;
@@ -403,11 +410,11 @@
       const t0 = performance.now();
       const qr = jsQR(img.data, target, target, { inversionAttempts: 'attemptBoth' });
       const t1 = performance.now();
-      const fps = Math.round(1000 / Math.max(1, (t1 - last || FRAME_GAP))); last = t1;
+      const fps = Math.round(1000 / Math.max(1, (t1 - last || minGapMs))); last = t1;
 
       if (qr && qr.data){
         if (typeof isResolved === 'function' && isResolved()) return; // 레이스 이미 성공
-        // 코너를 원본 좌표로 역매핑(대략)
+        // 코너 역매핑(원본 좌표로)
         const scale = side / target, offX = sx, offY = sy;
         const map = p => ({ x: p.x*scale + offX, y: p.y*scale + offY });
         const corners = {
