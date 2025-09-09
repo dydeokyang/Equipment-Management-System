@@ -1,19 +1,21 @@
+---
+---
 <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (중복방지 + CSV + 자동버전)</title>
+<title>QR 스캐너 (중복방지 + CSV + KST시간 + 깔끔한표)</title>
 
 <!-- 캐시 약화 메타 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 
-<!-- 자동 버전 쿼리(캐시 버스터): 배포 때 숫자만 +1 -->
+<!-- 자동 버전 쿼리(캐시 버스터): GitHub Pages(Liquid)로 자동 갱신 -->
 <script>
 (function () {
-  const APP_VERSION = '8'; // ← 다음 배포 시 '9', '10' ... 로만 올리면 됩니다
+  const APP_VERSION = '{{ site.time | date: "%Y%m%d%H%M%S" }}'; // 커밋마다 자동으로 새 값
   const url = new URL(location.href);
   if (url.searchParams.get('v') !== APP_VERSION) {
     url.searchParams.set('v', APP_VERSION);
@@ -23,17 +25,30 @@
 </script>
 
 <style>
-  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;max-width:760px;margin:24px auto;padding:0 16px}
-  h1{font-size:20px;margin:12px 0}
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
-  button{font-size:16px}
-  #video{width:100%;max-width:460px;display:none;border:1px solid #eee;border-radius:6px;margin:8px 0}
-  table{border-collapse:collapse;width:100%;margin-top:12px}
-  th,td{border:1px solid #ddd;padding:8px;text-align:left;word-break:break-all}
-  th{width:28%;background:#fafafa}
-  #msg{color:#b00;margin:8px 0}
-  .count{color:#333;font-size:14px;margin-left:auto}
-  ul{padding-left:18px}
+  :root{
+    --bg:#fff; --fg:#181a1b; --muted:#666; --border:#e6e8eb;
+    --accent:#2f6feb; --thead:#f8fafc; --shadow:0 4px 14px rgba(0,0,0,.08);
+  }
+  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;background:var(--bg);color:var(--fg);
+       max-width:840px;margin:28px auto;padding:0 16px}
+  h1{font-size:22px;margin:14px 0}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
+  button{font-size:16px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
+  button:hover{border-color:#c9ced6}
+  #video{width:100%;max-width:520px;display:none;border:1px solid var(--border);border-radius:12px;margin:10px 0;box-shadow:var(--shadow)}
+  .card{background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px;margin:14px 0}
+  .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
+  table{border-collapse:separate;border-spacing:0;width:100%}
+  th,td{padding:12px 12px;border-bottom:1px solid var(--border);text-align:left;word-break:break-all}
+  thead th{background:var(--thead);font-weight:600}
+  tbody tr:nth-child(even){background:#fcfdff}
+  tbody tr:first-child td, tbody tr:first-child th{border-top-left-radius:8px;border-top-right-radius:8px}
+  tbody tr:last-child td, tbody tr:last-child th{border-bottom-left-radius:8px;border-bottom-right-radius:8px;border-bottom:0}
+  #msg{color:#b00;margin:6px 2px}
+  .count{margin-left:auto;color:#333;font-size:14px}
+  ul{padding-left:18px;margin:8px 0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#334155;font-size:12px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -49,11 +64,19 @@
 <video id="video" playsinline muted></video>
 <p id="msg"></p>
 
-<h2>비품정보</h2>
-<table id="tbl"><tbody></tbody></table>
+<div class="card">
+  <h2>비품정보</h2>
+  <div class="subtitle">스캔 즉시 아래 표에 표시됩니다.</div>
+  <table id="tbl">
+    <tbody></tbody>
+  </table>
+</div>
 
-<h2>최근 저장 목록</h2>
-<ul id="list"></ul>
+<div class="card">
+  <h2>최근 저장 목록 <span class="pill mono">KST 기준</span></h2>
+  <div class="subtitle">같은 항목을 다시 스캔해도 중복 저장되지 않고, 시간만 갱신됩니다.</div>
+  <ul id="list"></ul>
+</div>
 
 <!-- jsQR 폴백용 -->
 <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
@@ -77,6 +100,22 @@
   }
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
   function setMsg(t){ msg.textContent = t || ''; }
+
+  // === 시간 유틸 ===
+  // (1) 서울시간(KST, Asia/Seoul) 보기 좋은 포맷: YYYY-MM-DD HH:mm:ss
+  function fmtKST(d){
+    const parts = new Intl.DateTimeFormat('ko-KR',{
+      timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+    }).formatToParts(d);
+    const get = t => parts.find(p=>p.type===t)?.value || '';
+    return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+  }
+  // (2) 현재 시각을 KST/UTC 모두 반환 (디바이스 시계 기준)
+  function nowTimes(){
+    const now = new Date();
+    return { kst: fmtKST(now), utc: now.toISOString() };
+  }
 
   // 중복 판별용 키: id가 있으면 id, 없으면 raw
   function dedupeKey(o){
@@ -140,13 +179,13 @@
   // 중복 방지 업서트: 같은 dedupeKey면 추가하지 않고 시간 갱신 + 최신으로 이동
   function upsertRecord(o){
     const key = dedupeKey(o);
-    const now = new Date().toISOString();
+    const t   = nowTimes(); // ★ 디바이스 시간 사용 (kst/utc 저장)
     const idx = records.findIndex(r => (r._key === key));
     if (idx >= 0) {
       const updated = {
         ...records[idx],
         id:o.id, name:o.name, loc:o.loc, owner:o.owner, raw:o.raw,
-        scanned_at: now
+        scanned_at_kst: t.kst, scanned_at_utc: t.utc
       };
       records.splice(idx, 1);
       records.push(updated);
@@ -154,7 +193,7 @@
     } else {
       records.push({
         _key:key, id:o.id, name:o.name, loc:o.loc, owner:o.owner,
-        raw:o.raw, scanned_at: now
+        raw:o.raw, scanned_at_kst: t.kst, scanned_at_utc: t.utc
       });
       setMsg('');
     }
@@ -167,7 +206,7 @@
     countEl.textContent = `저장 ${records.length}건`;
     records.slice().reverse().forEach(r=>{
       const li=document.createElement('li');
-      li.textContent = `${r.scanned_at} | id:${r.id} | name:${r.name} | loc:${r.loc} | owner:${r.owner}`;
+      li.innerHTML = `<span class="mono">${r.scanned_at_kst}</span> | id:${r.id} | name:${r.name} | loc:${r.loc} | owner:${r.owner}`;
       listEl.appendChild(li);
     });
   }
@@ -266,9 +305,9 @@
   // CSV 내보내기 (UTF-8 BOM으로 엑셀 한글 깨짐 방지)
   function exportCSV(){
     if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
-    const header = ['scanned_at','id','name','loc','owner'];
+    const header = ['scanned_at_kst','scanned_at_utc','id','name','loc','owner'];
     const rows = records.map(r=>[
-      r.scanned_at, r.id, r.name, r.loc, r.owner
+      r.scanned_at_kst, r.scanned_at_utc, r.id, r.name, r.loc, r.owner
     ]);
     const esc = v => `"${String(v??'').replace(/"/g,'""')}"`;
     const lines = [header.map(esc).join(','), ...rows.map(row=>row.map(esc).join(','))].join('\r\n');
