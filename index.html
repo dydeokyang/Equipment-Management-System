@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (자동 저장 + CSV 내보내기)</title>
+<title>QR 스캐너 (자동 저장 + CSV + 중복 방지)</title>
 <style>
   body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;max-width:760px;margin:24px auto;padding:0 16px}
   h1{font-size:20px;margin:12px 0}
@@ -22,7 +22,7 @@
 <body>
 <h1>QR 스캐너</h1>
 <p class="muted">지원 포맷: <code>key=value;…</code> 또는 JSON. (예: <code>id=A-1;name=노트북;loc=창고1;owner=홍길동</code>)<br>
-카메라는 <strong>HTTPS/localhost</strong>에서만 동작합니다.</p>
+카메라는 <strong>HTTPS/localhost</strong>에서만 동작합니다. 동일 항목 재스캔 시 목록에 <strong>중복 저장하지 않고</strong> 시간만 갱신합니다.</p>
 
 <div class="row">
   <button id="startBtn">카메라 시작</button>
@@ -62,6 +62,13 @@
   }
   function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
   function setMsg(t){ msg.textContent = t || ''; }
+
+  // 중복 판별용 키: id가 있으면 id, 없으면 raw
+  function dedupeKey(o){
+    const id = (o.id ?? '').trim();
+    if (id) return 'ID:' + id.toLowerCase();
+    return 'RAW:' + String(o.raw ?? '');
+  }
 
   // QR 텍스트 파싱 → {id,name,loc,owner, raw}
   function parseQR(text){
@@ -116,12 +123,29 @@
     });
   }
 
-  function addRecord(o){
-    const rec = {
-      id:o.id, name:o.name, loc:o.loc, owner:o.owner,
-      raw:o.raw, scanned_at: new Date().toISOString()
-    };
-    records.push(rec);
+  // ★ 중복 방지 로직: 같은 dedupeKey가 있으면 추가하지 않고 시간/내용 갱신 + 최신으로 이동
+  function upsertRecord(o){
+    const key = dedupeKey(o);
+    const now = new Date().toISOString();
+    const idx = records.findIndex(r => (r._key === key));
+    if (idx >= 0) {
+      // 기존 레코드 갱신
+      const updated = {
+        ...records[idx],
+        id:o.id, name:o.name, loc:o.loc, owner:o.owner, raw:o.raw,
+        scanned_at: now
+      };
+      // 최신으로 이동시키기: 기존 항목 제거 후 맨 끝에 다시 추가
+      records.splice(idx, 1);
+      records.push(updated);
+      setMsg('이미 저장된 항목입니다. 시간만 갱신했어요.');
+    } else {
+      records.push({
+        _key:key, id:o.id, name:o.name, loc:o.loc, owner:o.owner,
+        raw:o.raw, scanned_at: now
+      });
+      setMsg('');
+    }
     saveRecords();
     renderList();
   }
@@ -129,6 +153,7 @@
   function renderList(){
     listEl.innerHTML = '';
     countEl.textContent = `저장 ${records.length}건`;
+    // 최신이 끝에 있으므로 뒤에서부터 표시
     records.slice().reverse().forEach(r=>{
       const li=document.createElement('li');
       li.textContent = `${r.scanned_at} | id:${r.id} | name:${r.name} | loc:${r.loc} | owner:${r.owner}`;
@@ -177,10 +202,10 @@
               val = found && found[0]?.rawValue;
             }
             if(val){
-              stop(); setMsg('');
+              stop();
               const parsed = parseQR(val);
               renderTable(parsed);
-              addRecord(parsed); // ★ 스캔할 때마다 자동 저장
+              upsertRecord(parsed); // ★ 중복 방지 저장
               return;
             }
           }catch(e){
@@ -216,10 +241,10 @@
         const d=x.getImageData(0,0,c.width,c.height);
         const qr=jsQR(d.data,d.width,d.height,{inversionAttempts:'dontInvert'});
         if(qr && qr.data){
-          stop(); setMsg('');
+          stop();
           const parsed = parseQR(qr.data);
           renderTable(parsed);
-          addRecord(parsed); // ★ 자동 저장
+          upsertRecord(parsed); // ★ 중복 방지 저장
           return;
         }
       }
