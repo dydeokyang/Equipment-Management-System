@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>디와이덕양 비품관리</title>
+<title>QR 스캐너 (비품번호/비품명/위치/사용자 · KST · 중복방지+CSV)</title>
 
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
@@ -73,12 +73,14 @@
 
 <div class="row">
   <button id="startBtn">카메라 시작</button>
+  <button id="imageBtn" title="사진을 촬영/선택해서 인식합니다.">사진으로 스캔</button>
   <button id="exportBtn">CSV 내보내기</button>
   <button id="clearBtn" title="저장된 모든 레코드를 삭제합니다.">초기화</button>
   <span class="count" id="count">저장 0건</span>
 </div>
 
 <video id="video" playsinline muted></video>
+<input id="fileInput" type="file" accept="image/*;capture=camera" style="display:none" />
 <p id="msg"></p>
 
 <div class="card">
@@ -93,7 +95,11 @@
   <div id="list" class="list"></div>
 </div>
 
-<script src="lib/jsqr.min.js"></script>
+<!-- 권장: 로컬 파일로 고정 버전 사용 -->
+<script src="/lib/jsqr.min.js"></script>
+<!-- 필요 시 CDN을 사용하려면 위 줄을 지우고 아래 주석을 해제하세요 -->
+<!-- <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script> -->
+
 <script>
 (() => {
   const video  = document.getElementById('video');
@@ -101,6 +107,7 @@
   const tbody  = document.querySelector('#tbl tbody');
   const listEl = document.getElementById('list');
   const countEl= document.getElementById('count');
+  const fileEl = document.getElementById('fileInput');
 
   let stream = null, running = false;
 
@@ -195,13 +202,27 @@
 
   function esc(s){ return String(s??'').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
-  function stop(){ running=false; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } video.style.display='none'; }
+  function stop(){
+    running=false;
+    if(stream){
+      stream.getTracks().forEach(t=>t.stop());
+      stream=null;
+    }
+    video.srcObject=null;
+    video.style.display='none';
+  }
 
   async function start(){
     if(location.protocol!=='https:' && location.hostname!=='localhost'){ setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.'); return; }
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.'); return; }
     try{
-      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }});
+      // 이전 세션 정리
+      stop();
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+        audio:false
+      });
       video.srcObject=stream; await video.play();
       video.style.display='block'; running=true; setMsg('QR을 화면에 담아주세요…');
 
@@ -216,7 +237,7 @@
         const loop = async ()=>{
           if(!running) return;
           try{
-            // 타임아웃 폴백
+            // 타임아웃 폴백 (iOS 등 미지원/느림 대응)
             if (performance.now() - started > 1500) { jsqrFallback(); return; }
 
             let val=null;
@@ -250,25 +271,60 @@
     }
   }
 
+  // iOS 친화적인 jsQR 폴백 (다운스케일 + 스로틀 + attemptBoth)
   function jsqrFallback(){
-    const c=document.createElement('canvas'), x=c.getContext('2d');
+    const c=document.createElement('canvas');
+    const x=c.getContext('2d',{ willReadFrequently:true });
     let last=0;
+    let targetW = 480; // 성능/발열 균형(360~640 권장)
     (function loop(){
       if(!running) return;
+
       const now=performance.now();
-      if(now-last<100){ requestAnimationFrame(loop); return; }
+      if(now-last<120){ requestAnimationFrame(loop); return; } // ~8fps
       last=now;
+
       if(video.readyState===video.HAVE_ENOUGH_DATA){
-        c.width=video.videoWidth||640; c.height=video.videoHeight||480;
+        const vw = video.videoWidth  || 640;
+        const vh = video.videoHeight || 480;
+        const ratio = vh / vw;
+        c.width  = targetW;
+        c.height = Math.round(targetW * ratio);
+
         x.drawImage(video,0,0,c.width,c.height);
         const img=x.getImageData(0,0,c.width,c.height);
-        const qr=jsQR(img.data,img.width,img.height,{ inversionAttempts:'dontInvert' });
+
+        // 밝기/노출 변화 대응
+        const qr=jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
         if(qr && qr.data){
           stop(); const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed); return;
         }
       }
       requestAnimationFrame(loop);
     })();
+  }
+
+  // 사진 파일로 인식(대체 입력)
+  async function scanImageFile(file){
+    if(!file) return;
+    const img = new Image();
+    img.onload = ()=>{
+      const c=document.createElement('canvas');
+      const r=img.height/img.width;
+      const w=Math.min(1000, img.width); // 과한 해상도 방지
+      c.width=w; c.height=Math.round(w*r);
+      const x=c.getContext('2d',{ willReadFrequently:true });
+      x.drawImage(img,0,0,c.width,c.height);
+      const d=x.getImageData(0,0,c.width,c.height);
+      const res=jsQR(d.data,d.width,d.height,{ inversionAttempts:'attemptBoth' });
+      if(res?.data){
+        const parsed=parseQR(res.data); renderTable(parsed); upsertRecord(parsed);
+        setMsg('');
+      }else{
+        setMsg('QR을 인식하지 못했습니다. 더 선명한 사진으로 시도해주세요.');
+      }
+    };
+    img.src = URL.createObjectURL(file);
   }
 
   // CSV 내보내기 (UTF-8 BOM)
@@ -284,11 +340,19 @@
 
   function clearAll(){ if(!confirm('저장된 모든 레코드를 삭제할까요?')) return; records=[]; saveRecords(); renderList(); }
 
-  document.getElementById('startBtn').onclick = ()=>{ stop(); start(); };
+  // 페이지 숨김 시 정지 (배터리/발열 대비)
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden){ stop(); }
+  });
+
+  // 버튼 이벤트 (사용자 제스처 내에서 시작)
+  document.getElementById('startBtn').onclick = ()=>{ start(); };
   document.getElementById('exportBtn').onclick= exportCSV;
   document.getElementById('clearBtn').onclick = clearAll;
+
+  document.getElementById('imageBtn').onclick = ()=> fileEl.click();
+  fileEl.addEventListener('change', e => scanImageFile(e.target.files?.[0]));
 })();
 </script>
 </body>
 </html>
-
