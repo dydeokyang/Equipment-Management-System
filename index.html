@@ -5,7 +5,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>QR 스캐너 (비품번호/비품명/위치/사용자 · KST · 중복방지+CSV)</title>
+<title>디와이덕양 비품관리</title>
+
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 
 <!-- 캐시 무효화 (Jekyll time stamp 쿼리) -->
 <script>
@@ -70,14 +74,12 @@
 
 <div class="row">
   <button id="startBtn">카메라 시작</button>
-  <button id="imageBtn" title="사진을 촬영/선택해서 인식합니다.">사진으로 스캔</button>
   <button id="exportBtn">CSV 내보내기</button>
   <button id="clearBtn"  title="저장된 모든 레코드를 삭제합니다.">초기화</button>
   <span class="count" id="count">저장 0건</span>
 </div>
 
 <video id="video" playsinline muted></video>
-<input id="fileInput" type="file" accept="image/*;capture=camera" style="display:none" />
 <p id="msg"></p>
 
 <div class="card">
@@ -92,10 +94,8 @@
   <div id="list" class="list"></div>
 </div>
 
-<!-- 권장: 로컬 고정 버전 -->
+<!-- 로컬 고정 버전(min) 사용 -->
 <script src="/lib/jsqr.min.js"></script>
-<!-- CDN을 쓰려면 위 줄을 지우고 아래 주석을 해제 -->
-<!-- <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script> -->
 
 <script>
 (() => {
@@ -104,7 +104,6 @@
   const tbody  = document.querySelector('#tbl tbody');
   const listEl = document.getElementById('list');
   const countEl= document.getElementById('count');
-  const fileEl = document.getElementById('fileInput');
 
   let stream = null, running = false;
 
@@ -113,7 +112,7 @@
     const ua = navigator.userAgent || '';
     const iOSDevice = /iP(hone|ad|od)/.test(ua);
     const webkit = /WebKit/.test(ua);
-    const isCriOS = /CriOS/.test(ua); // iOS의 Chrome
+    const isCriOS = /CriOS/.test(ua); // iOS Chrome
     return (iOSDevice && webkit) || isCriOS;
   })();
 
@@ -218,58 +217,80 @@
     video.style.display='none';
   }
 
-  // --- 카메라 시작: iOS는 무조건 jsQR 폴백 사용
+  // --- 카메라 시작: iOS 강제 jsQR, AND/데스크톱은 레이스 실행
   async function start(){
     if(location.protocol!=='https:' && location.hostname!=='localhost'){ setMsg('실시간 스캔은 HTTPS 또는 localhost에서만 가능합니다.'); return; }
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setMsg('이 브라우저는 카메라 API를 지원하지 않습니다.'); return; }
 
     try{
       stop(); // 이전 세션 정리
+
+      // iOS 자동재생/인라인 재생 안전장치
       video.setAttribute('playsinline','');
       video.setAttribute('muted','');
       video.muted = true;
 
-      const constraints = {
+      stream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
         audio:false
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject=stream; await video.play();
-      video.style.display='block'; running=true; setMsg('QR을 화면에 담아주세요…');
+      });
+      video.srcObject = stream;
 
+      // 워밍업: 프레임 준비까지 대기
+      if (video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
+        await new Promise(resolve => {
+          const onReady = ()=>resolve();
+          video.addEventListener('loadeddata', onReady, { once:true });
+          video.addEventListener('canplay',    onReady, { once:true });
+        });
+      }
+      await video.play();
+
+      video.style.display='block';
+      running = true;
+      setMsg('QR을 화면에 담아주세요…');
+
+      // iOS: 네이티브 미지원 → jsQR 폴백만 사용
       if (isIOS) { jsqrFallback(); return; }
 
-      // 안드로이드/데스크톱: 네이티브 → 타임아웃 시 폴백
-      if('BarcodeDetector' in window){
-        const detector = new BarcodeDetector({formats:['qr_code']});
-        const useGrab = 'ImageCapture' in window;
-        const track   = stream.getVideoTracks()[0];
-        const grabber = useGrab ? new ImageCapture(track) : null;
-        const started = performance.now();
+      // AND/데스크: 네이티브와 jsQR을 레이스로 동시 실행 (먼저 잡는 쪽 승리)
+      let resolved = false;
+      const win = (val)=>{
+        if (resolved) return true;
+        if (val) {
+          resolved = true;
+          stop();
+          const parsed = parseQR(val);
+          renderTable(parsed);
+          upsertRecord(parsed);
+          return true;
+        }
+        return false;
+      };
 
+      // A) BarcodeDetector 루프 (grabFrame 경로는 기기별 불안정→detect(video)만 사용)
+      const runDetector = async ()=>{
+        if(!('BarcodeDetector' in window)) return;
+        const detector = new BarcodeDetector({ formats:['qr_code'] });
         const loop = async ()=>{
-          if(!running) return;
+          if(!running || resolved) return;
           try{
-            if (performance.now() - started > 1500) { jsqrFallback(); return; }
-            let val=null;
-            if(useGrab){
-              const frame = await grabber.grabFrame();
-              const found = await detector.detect(frame);
-              val = found && found[0]?.rawValue;
-            } else {
-              const found = await detector.detect(video);
-              val = found && found[0]?.rawValue;
-            }
-            if(val){
-              stop(); const parsed=parseQR(val); renderTable(parsed); upsertRecord(parsed); return;
-            }
-          }catch{ jsqrFallback(); return; }
+            const found = await detector.detect(video);
+            const val = found && found[0]?.rawValue;
+            if (win(val)) return;
+          }catch(_) { /* 무시하고 계속 */ }
           requestAnimationFrame(loop);
         };
         loop();
-      } else {
-        jsqrFallback();
-      }
+      };
+
+      // B) jsQR 폴백 루프 (소폭 딜레이 후 시작 → CPU 분배)
+      const runJsQR = ()=>{
+        setTimeout(()=>{ if(!resolved && running) jsqrFallback(()=>resolved); }, 400);
+      };
+
+      runDetector();
+      runJsQR();
     }catch(e){
       const map={NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
                  NotFoundError:'카메라 장치를 찾을 수 없습니다.',
@@ -280,13 +301,13 @@
     }
   }
 
-  // --- iOS 친화 jsQR 폴백 (다운스케일 + 스로틀 + rVFC 우선)
-  function jsqrFallback(){
+  // --- jsQR 폴백 (다운스케일 + 스로틀 + rVFC 우선). isResolved 콜백은 레이스용 옵션
+  function jsqrFallback(isResolved){
     const c=document.createElement('canvas');
     const x=c.getContext('2d',{ willReadFrequently:true });
 
-    const targetW = 480;  // 360~640 권장
-    const minGapMs = 120; // ~8fps
+    const targetW = 560;   // 480~640 권장 (인식률↑ vs 발열)
+    const minGapMs = 100;  // ~10fps
     let last = 0;
     let cancel = false;
 
@@ -304,15 +325,19 @@
       const img=x.getImageData(0,0,c.width,c.height);
       const qr = jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
       if(qr && qr.data){
-        stop(); const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed);
+        if (typeof isResolved === 'function' && isResolved()) return; // 이미 다른 경로가 성공
+        stop();
+        const parsed=parseQR(qr.data);
+        renderTable(parsed);
+        upsertRecord(parsed);
       }
     };
 
     const rVFC = video.requestVideoFrameCallback?.bind(video);
     if (rVFC) {
-      const onFrame = (now/*highRes*/)=>{
+      const onFrame = (now)=>{
         if(!running || cancel) return;
-        if (now - last >= minGapMs) { last = now; decodeOnce(); }
+        if(now - last >= minGapMs){ last = now; decodeOnce(); }
         rVFC(onFrame);
       };
       rVFC(onFrame);
@@ -329,109 +354,6 @@
     track && track.addEventListener?.('ended', ()=>{ cancel=true; });
   }
 
-  // --- 사진 파일 스캔 (EXIF 회전 보정 + 다운스케일)
-  async function scanImageFile(file){
-    if(!file){ setMsg('파일이 선택되지 않았습니다.'); return; }
-    try{
-      setMsg('사진 분석 중…');
-      const orientation = await getExifOrientation(file).catch(()=>1);
-      const img = await decodeImageFromFile(file);
-      const { canvas } = drawOriented(img, 1200, orientation);
-      const x = canvas.getContext('2d',{ willReadFrequently:true });
-      const d = x.getImageData(0, 0, canvas.width, canvas.height);
-      const res = jsQR(d.data, d.width, d.height, { inversionAttempts:'attemptBoth' });
-
-      if(res?.data){
-        const parsed = parseQR(res.data); renderTable(parsed); upsertRecord(parsed); setMsg('');
-      } else {
-        setMsg('QR을 인식하지 못했습니다. (조명/초점/거리 조절 후 다시 시도)');
-      }
-    }catch(err){
-      setMsg('사진 스캔 실패: ' + (err.message || err));
-    }
-  }
-
-  // --- EXIF Orientation 읽기 (간단 JPEG APP1 파서)
-  async function getExifOrientation(file){
-    const slice = file.slice(0, 128 * 1024);
-    const buf = await slice.arrayBuffer().catch(()=>null);
-    if(!buf) return 1;
-    const view = new DataView(buf);
-    if (view.getUint16(0, false) !== 0xFFD8) return 1; // not JPEG
-    let offset = 2, length = view.byteLength;
-    while (offset < length) {
-      const marker = view.getUint16(offset, false); offset += 2;
-      if (marker === 0xFFE1) { // APP1
-        const exifLength = view.getUint16(offset, false); offset += 2;
-        if (view.getUint32(offset, false) !== 0x45786966) return 1; // "Exif"
-        offset += 6;
-        const little = view.getUint16(offset, false) === 0x4949;
-        offset += 2;
-        if (view.getUint16(offset, little) !== 0x002A) return 1;
-        offset += 2;
-        let dirStart = view.getUint32(offset, little);
-        if (!dirStart) return 1;
-        dirStart += offset + 4 - 8;
-        const entries = view.getUint16(dirStart, little);
-        for (let i=0;i<entries;i++){
-          const entryOffset = dirStart + 2 + i*12;
-          const tag = view.getUint16(entryOffset, little);
-          if (tag === 0x0112) return view.getUint16(entryOffset + 8, little) || 1; // Orientation
-        }
-        return 1;
-      } else if ((marker & 0xFF00) !== 0xFF00) break;
-      else offset += view.getUint16(offset, false);
-    }
-    return 1;
-  }
-
-  // --- 이미지 디코딩 (iOS 안정화: DataURL 사용)
-  function decodeImageFromFile(file){
-    return new Promise((resolve, reject)=>{
-      const img = new Image();
-      img.onload = async ()=>{
-        try{ if(img.decode) await img.decode(); }catch(_){}
-        resolve(img);
-      };
-      img.onerror = ()=> reject(new Error('이미지 로드 실패'));
-      const r = new FileReader();
-      r.onload  = ()=> { img.src = r.result; };
-      r.onerror = ()=> reject(new Error('파일 읽기 실패'));
-      r.readAsDataURL(file);
-    });
-  }
-
-  // --- 회전/반전 적용 + 다운스케일 렌더링
-  function drawOriented(img, maxW, orientation){
-    const iw = img.naturalWidth || img.width;
-    const ih = img.naturalHeight || img.height;
-    const scale = Math.min(1, maxW / Math.max(iw, ih));
-    let w = Math.round(iw * scale), h = Math.round(ih * scale);
-    const rotate90 = (o)=> (o===5 || o===6 || o===7 || o===8);
-    if (rotate90(orientation)) [w, h] = [h, w];
-
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const x = canvas.getContext('2d', { willReadFrequently: true });
-
-    x.save();
-    switch (orientation) {
-      case 2: x.translate(w, 0); x.scale(-1, 1); break;
-      case 3: x.translate(w, h); x.rotate(Math.PI); break;
-      case 4: x.translate(0, h); x.scale(1, -1); break;
-      case 5: x.rotate(0.5*Math.PI); x.scale(1, -1); break;
-      case 6: x.rotate(0.5*Math.PI); x.translate(0, -h); break;
-      case 7: x.rotate(0.5*Math.PI); x.translate(w, -h); x.scale(-1, 1); break;
-      case 8: x.rotate(-0.5*Math.PI); x.translate(-w, 0); break;
-      default: break;
-    }
-    if (rotate90(orientation)) x.drawImage(img, 0, 0, h, w);
-    else                       x.drawImage(img, 0, 0, w, h);
-    x.restore();
-
-    return { canvas, width: canvas.width, height: canvas.height };
-  }
-
   // --- CSV 내보내기 (UTF-8 BOM)
   function exportCSV(){
     if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
@@ -443,7 +365,14 @@
     a.href=URL.createObjectURL(blob); a.download='qr_scans_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
   }
 
-  function clearAll(){ if(!confirm('저장된 모든 레코드를 삭제할까요?')) return; records=[]; saveRecords(); renderList(); }
+  // --- 초기화: 저장/표/메시지/카메라 모두 리셋
+  function clearAll(){
+    if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
+    records=[]; saveRecords(); renderList();
+    tbody.innerHTML = ''; // 비품정보 표 비움
+    setMsg('초기화 완료');
+    stop(); // 카메라도 정지
+  }
 
   // --- 페이지 숨김 시 정지 (배터리/발열 절감)
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stop(); } });
@@ -452,8 +381,6 @@
   document.getElementById('startBtn').onclick = ()=> start();
   document.getElementById('exportBtn').onclick= exportCSV;
   document.getElementById('clearBtn').onclick = clearAll;
-  document.getElementById('imageBtn').onclick = ()=> fileEl.click();
-  fileEl.addEventListener('change', e => scanImageFile(e.target.files?.[0]));
 })();
 </script>
 </body>
