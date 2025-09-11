@@ -2,8 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>디와이덕양 비품관리 — QR 스캐너 (Tap-to-Enhance)</title>
+<!-- 브라우저 확대 제스처 방지 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>디와이덕양 비품관리</title>
 <style>
   :root{
     --bg:#fff; --fg:#16181b; --muted:#667085; --border:#e6e8eb; --shadow:0 4px 14px rgba(0,0,0,.08);
@@ -22,13 +23,15 @@
   #msg{margin:8px 2px;color:#475569}
 
   #previewHost{margin:10px 0}
-  #preview{position:relative;width:100%;max-width:560px;aspect-ratio:1/1;overflow:hidden;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);display:none;background:transparent}
-  #video,#overlay{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:cover;object-position:center;background:transparent}
-  /* 탭-투-향상 가이드 */
+  #preview{position:relative;width:100%;max-width:560px;aspect-ratio:1/1;overflow:hidden;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);display:none;background:transparent;
+    /* 브라우저 제스처 차단: 핀치/더블탭 확대 방지 */
+    touch-action:none;
+  }
+  #video,#overlay{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:cover;object-position:center;background:transparent;touch-action:none}
   #tapHint{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:rgba(0,0,0,.56);color:#fff;font-size:13px;padding:6px 10px;border-radius:999px;display:none}
   #tapPulse{position:absolute;inset:0;border:2px dashed rgba(14,165,233,.6);border-radius:12px;display:none;pointer-events:none}
   @keyframes pulseBorder { 0%{box-shadow:0 0 0 0 rgba(14,165,233,.5)} 70%{box-shadow:0 0 0 20px rgba(14,165,233,0)} 100%{box-shadow:0 0 0 0 rgba(14,165,233,0)} }
-  .pulse { animation: pulseBorder 1.2s ease-out 2; }
+  .pulse { animation: pulseBorder 1.0s ease-out 2; }
 
   .card{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin:16px 0}
   .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
@@ -65,7 +68,6 @@
   .badge.loc{background:var(--chip-loc);color:var(--chip-loc-text)}
   .badge.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
 
-  /* 메인 버튼 */
   button.btn-primary{
     background:linear-gradient(135deg,#3b82f6,#2563eb);
     color:#fff;border:none;font-weight:700;
@@ -75,24 +77,10 @@
   button.btn-primary:hover{ background:linear-gradient(135deg,#60a5fa,#3b82f6); box-shadow:0 6px 16px rgba(37,99,235,.45); transform:translateY(-2px) }
   button.btn-primary:active{ transform:translateY(0); box-shadow:0 2px 8px rgba(37,99,235,.3) }
   button.btn-primary:focus-visible{ outline:2px solid #93c5fd; outline-offset:2px }
-
-  .photo-grid .actions{ display:flex; gap:8px; flex-wrap:nowrap; align-items:stretch }
-  .photo-grid .actions button{ flex:1 1 0; min-width:0; white-space:nowrap }
-  @media (max-width:380px){ .photo-grid .actions{gap:6px} .photo-grid .actions button{font-size:14px;padding:9px 10px} }
-  @media (max-width:320px){ .photo-grid .actions{ overflow-x:auto } }
-
-  /* 모달(예비) */
-  #confirmMask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:9999}
-  #confirmBox{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);max-width:420px;width:92%;padding:16px}
-  #confirmBox h3{margin:0 0 8px 0;font-size:16px}
-  #confirmBox p{margin:0 0 14px 0;color:#475569;white-space:pre-line}
-  #confirmBox .actions{display:flex;gap:8px;justify-content:flex-end}
-  #confirmBox .btn{padding:10px 14px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
-  #confirmBox .btn.primary{background:#16a34a;color:#fff;border:none}
 </style>
 </head>
 <body>
-<h1>QR 스캐너</h1>
+<h1>QR 스캐너v1</h1>
 
 <div class="row">
   <button id="startQrBtn" class="btn-primary">🎥 QR 카메라 ON</button>
@@ -108,12 +96,12 @@
   <div id="preview">
     <video id="video" playsinline muted></video>
     <canvas id="overlay"></canvas>
-    <div id="tapHint">화면 탭: 화질향상+정밀스캔 / 두손핀치: 줌</div>
+    <div id="tapHint">화면 탭: 가벼운 확대 + 정밀 스캔</div>
     <div id="tapPulse"></div>
   </div>
 </div>
 
-<p id="msg">QR을 화면 중앙에 크게 맞춰주세요. (안드로이드: 화면을 탭하면 화질향상 후 정밀 스캔합니다)</p>
+<p id="msg">안드로이드: 화면을 탭하면 확대 후 정밀 스캔합니다. (밝은 곳에서 5–10cm 거리)</p>
 
 <div class="card" id="infoCard">
   <h2>비품정보</h2>
@@ -121,11 +109,11 @@
   <table id="tbl"><tbody></tbody></table>
 
   <div id="photoStep" class="photo-step">
-    <div class="photo-head">QR 정상 인식됨 → 지금 비품 사진을 촬영하세요(처리용량 초과시 저장이 안될수 있습니다. 저장후 초기화를 하세요)</div>
+    <div class="photo-head">QR 정상 인식됨 → 지금 비품 사진을 촬영하세요</div>
     <div class="photo-grid">
       <div>
         <div class="photo-chips" id="photoChips"></div>
-        <div class="hint">비품 전체가 보이도록 카메라를 맞춘 뒤 <strong>비품 사진 촬영</strong>을 누르세요.</div>
+        <div class="hint">비품 전체가 보이도록 맞춘 뒤 <strong>비품 사진 촬영</strong>을 누르세요.</div>
         <div class="actions">
           <button id="shotBtn" class="btn-primary">비품 사진 촬영 📷</button>
           <button id="skipBtn" class="btn-ghost">사진 건너뛰기</button>
@@ -144,10 +132,10 @@
   <div id="list" class="list"></div>
 </div>
 
-<!-- 라이브러리 -->
-<script src="libs/jsQR.js"></script>
-<script src="libs/FileSaver.min.js"></script>
-<script src="libs/exceljs.min.js"></script>
+<!-- 라이브러리 (캐시버스팅 유지) -->
+<script src="libs/jsQR.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+<script src="libs/FileSaver.min.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+<script src="libs/exceljs.min.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
 
 <script>
 (()=> {
@@ -160,7 +148,7 @@
   const preview = document.getElementById('preview');
   const video = document.getElementById('video');
   const overlay = document.getElementById('overlay');
-  const ox = overlay.getContext('2d');
+  const ox = overlay.getContext('2d', { willReadFrequently:true });
   const tapHint = document.getElementById('tapHint');
   const tapPulse = document.getElementById('tapPulse');
   const msg = document.getElementById('msg');
@@ -175,7 +163,6 @@
   const countEl = document.getElementById('count');
 
   // ===== 상태 =====
-  const DEBUG=false, WARMUP_FRAMES=6;
   let stream=null, running=false;
   let MODE='idle'; // idle | scan | photo
   let pendingParsed=null, photoRAF=null;
@@ -183,10 +170,12 @@
   // 워치독
   let lastVideoTime = 0, stillTicks = 0;
 
+  // 페이지 확대 제스처 방지(핀치/더블탭)
+  let lastTouchEnd=0;
+  document.addEventListener('touchstart', e=>{ if(e.touches.length>1) e.preventDefault(); }, {passive:false});
+  document.addEventListener('touchend', e=>{ const now=Date.now(); if(now-lastTouchEnd<300) e.preventDefault(); lastTouchEnd=now; }, {passive:false});
+
   // ===== 유틸 =====
-  const isMobile = (()=>{try{
-    return window.matchMedia?.('(pointer:coarse)')?.matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-  }catch(_){return false;}})();
   function smoothScrollTo(el, offset=0){ if(!el) return; const r=el.getBoundingClientRect(); window.scrollTo({top: window.pageYOffset + r.top + offset, behavior:'smooth'}); }
   function setMsg(t){ msg.textContent=t||''; }
   function esc(s){ return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -222,12 +211,12 @@
     });
   }
 
-  // ===== 디코더 해상도 스텝 (상향) =====
-  const TARGET_STEPS = [800, 1024, 1280, 1600];
+  // ===== 디코더 해상도 스텝 (가볍게) =====
+  const TARGET_STEPS = [800, 1024];
 
-  // ===== 인식률 보강 =====
+  // ===== 인식 유틸 =====
   function tryDecode(video, opts, cache){
-    const { width, full=false, centerCrop=false, boost=false } = opts;
+    const { width, full=false, centerCrop=false } = opts;
     const { c, x } = cache || (()=>{ const c=document.createElement('canvas'); const x=c.getContext('2d',{willReadFrequently:true}); return {c,x}; })();
     const vw=video.videoWidth||640, vh=video.videoHeight||480;
     let sx=0, sy=0, sw=vw, sh=vh;
@@ -242,7 +231,6 @@
     }
 
     x.imageSmoothingEnabled=false;
-    x.filter = boost ? 'contrast(140%) brightness(112%)' : 'none';
     x.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
     const img=x.getImageData(0,0,c.width,c.height);
     return jsQR(img.data, c.width, c.height, { inversionAttempts:'attemptBoth' });
@@ -266,7 +254,7 @@
   function showPreview(b){
     preview.style.display=b?'block':'none';
     video.style.display=b?'block':'none';
-    overlay.style.display=(b && DEBUG)?'block':'none';
+    overlay.style.display='none';
     tapHint.style.display=b?'block':'none';
   }
   async function ensureVisible(){
@@ -323,48 +311,44 @@
 
   // ===== 카메라 =====
   async function startCamera(){
-    const baseVideo = {
-      facingMode:{ ideal:'environment' }, // exact 실패 기기 방지
-      width:{ min:1280, ideal:2560, max:3840 },
-      height:{ min:720,  ideal:1440, max:2160 },
-      aspectRatio:{ ideal:16/9 },
-      frameRate:{ ideal:30, max:60 },
+  // 데스크톱/노트북/안드 공통으로 무난한 프로파일
+  const constraints = {
+    video:{
+      facingMode:{ ideal:'environment' }, // 노트북은 무시되어도 OK
+      width:{ ideal:1280, max:1920 },
+      height:{ ideal:720,  max:1080 },
+      frameRate:{ ideal:30, max:30 },
       resizeMode:'none'
-    };
-
-    let got=null;
-    try{
-      got = await navigator.mediaDevices.getUserMedia({ video: baseVideo, audio:false });
-    }catch(e){
-      // 아주 보수적 폴백
-      got = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' }, audio:false });
-    }
-
-    stream=got;
-    video.srcObject=null; video.load(); video.srcObject=stream;
-
-    // 초기 줌/AF 힌트
-    try{
-      const track = stream.getVideoTracks()[0];
-      const caps  = track.getCapabilities?.()||{};
-      if('zoom' in caps){
-        const init = Math.min(caps.max, Math.max(caps.min, caps.max*0.6));
-        await track.applyConstraints({ advanced:[{ zoom:init }] });
-      }
-      if (caps.focusMode && caps.focusMode.includes('continuous')) {
-        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-      }
-    }catch(_){}
-
-    await new Promise(r=>{
-      if(video.readyState>=HTMLMediaElement.HAVE_ENOUGH_DATA) return r();
-      const ok=()=>r();
-      video.addEventListener('loadeddata', ok, { once:true });
-      video.addEventListener('canplay', ok, { once:true });
-    });
-    try{ await video.play(); }catch(_){}
-    running=true;
+    },
+    audio:false
+  };
+  try{
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  }catch(e){
+    // 폴백: 아주 기본
+    stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
   }
+  video.srcObject=null; video.load(); video.srcObject=stream;
+
+  // 지원 시 연속 AF만 힌트
+  try{
+    const track = stream.getVideoTracks()[0];
+    const caps  = track.getCapabilities?.()||{};
+    if (caps.focusMode && caps.focusMode.includes('continuous')) {
+      await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    }
+  }catch(_){}
+
+  await new Promise(r=>{
+    if(video.readyState>=HTMLMediaElement.HAVE_ENOUGH_DATA) return r();
+    const ok=()=>r();
+    video.addEventListener('loadeddata', ok, { once:true });
+    video.addEventListener('canplay', ok, { once:true });
+  });
+  try{ await video.play(); }catch(_){}
+  running=true;
+}
+
 
   function stopCamera(){
     try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
@@ -373,11 +357,35 @@
     video.srcObject=null; video.load();
     showPreview(false);
     hidePhotoPanel();
+    stopLoop();
   }
 
-  // ===== QR 스캔 루프 =====
-  let accept={v:null,at:0};
-  function canAccept(v){ const now=performance.now(); if(v && accept.v===v && now-accept.at<2000) return false; accept={v,at:now}; return true; }
+  // ===== 스캔 루프(120ms/경량) =====
+  let scanTimer=null, scanning=false;
+  const cache={ c:document.createElement('canvas'), x:null };
+  cache.x = cache.c.getContext('2d',{willReadFrequently:true});
+  function startLoop(det){
+    stopLoop();
+    scanTimer = setInterval(async ()=>{
+      if(MODE!=='scan' || !running || scanning) return;
+      if(video.readyState<video.HAVE_CURRENT_DATA) return;
+      scanning=true;
+      try{
+        if(det){
+          try{
+            const r=await det.detect(video);
+            const val=r && r[0]?.rawValue;
+            if(val && hasIdField(val)){ onQrDetected(val); return; }
+          }catch(_){}
+        }
+        let qr=null;
+        for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w, full:true}, cache); if(qr&&qr.data) break; }
+        if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w, full:false, centerCrop:true}, cache); if(qr&&qr.data) break; } }
+        if(qr && qr.data && hasIdField(qr.data)) onQrDetected(qr.data);
+      } finally { scanning=false; }
+    }, 120);
+  }
+  function stopLoop(){ if(scanTimer){ clearInterval(scanTimer); scanTimer=null; } }
 
   async function startQrScan(){
     MODE='scan'; setMsg('QR을 화면 중앙에 크게 맞춰주세요…'); hidePhotoPanel();
@@ -385,43 +393,12 @@
 
     if(!running){ await startCamera(); await ensureVisible(); } else { await ensureVisible(); }
 
-    showPreview(true); photoLive.style.display='none'; overlay.style.display='none';
+    showPreview(true);
     tapHint.style.display='block'; tapPulse.style.display='none';
-    accept={v:null,at:0};
 
     let det=null;
     try{ if('BarcodeDetector' in window && typeof BarcodeDetector==='function'){ det=new BarcodeDetector({formats:['qr_code']}); } }catch(_){ det=null; }
-
-    if(det){
-      (async function loop(){
-        if(MODE!=='scan' || !running) return;
-        try{
-          const r=await det.detect(video); const val=r&&r[0]?.rawValue;
-          if(val && hasIdField(val) && canAccept(val)) return onQrDetected(val);
-        }catch(_){}
-        requestAnimationFrame(loop);
-      })();
-    }else{
-      const cache={ c:document.createElement('canvas'), x:null };
-      cache.x=cache.c.getContext('2d',{willReadFrequently:true});
-      let frame=0;
-      (function loop(){
-        if(MODE!=='scan' || !running) return;
-        if(video.readyState!==video.HAVE_ENOUGH_DATA) return requestAnimationFrame(loop);
-        if(frame++<8) return requestAnimationFrame(loop);
-
-        let qr=null;
-        // ① 풀프레임(16:9) 시도 (출력폭 상향)
-        for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:true},cache); if(qr&&qr.data) break; }
-        // ② 중앙 정사각 확대
-        if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true},cache); if(qr&&qr.data) break; } }
-        // ③ 대비↑ + 중앙 확대
-        if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true,boost:true},cache); if(qr&&qr.data) break; } }
-
-        if(qr && qr.data && hasIdField(qr.data) && canAccept(qr.data)) return onQrDetected(qr.data);
-        requestAnimationFrame(loop);
-      })();
-    }
+    startLoop(det);
   }
 
   // ===== 파서 =====
@@ -497,7 +474,6 @@
         stopPhotoLive(); hidePhotoPanel(); stopCamera(); MODE='idle';
         startQrBtn.textContent='🎥 QR 카메라 ON';
         setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 ON]을 누르세요.');
-        accept={v:null,at:0};
         return;
       }
     }
@@ -523,7 +499,7 @@
     smoothScrollTo(photoStep,-8);
   }
 
-  // ===== 캡처 =====
+  // ===== 촬영(4:3 크롭) =====
   async function capture(videoEl, maxW=960){
     const vw=videoEl.videoWidth||640, vh=videoEl.videoHeight||480, aspect=4/3;
     const srcAR=vw/vh;
@@ -536,120 +512,84 @@
     return c.toDataURL('image/jpeg', 0.6);
   }
 
-  // ===== Tap-to-Enhance (핵심) =====
+  // ===== Tap: 가벼운 확대 + grabFrame 정밀 스캔 =====
   async function tapToEnhanceAndScan(){
-    if(!running) return;
-    tapPulse.style.display='block';
-    tapPulse.classList.remove('pulse'); void tapPulse.offsetWidth; tapPulse.classList.add('pulse');
+  if(!running || MODE!=='scan') return;
+  tapPulse.style.display='block'; tapPulse.classList.remove('pulse'); void tapPulse.offsetWidth; tapPulse.classList.add('pulse');
 
-    let torchOn=false;
-    try{
-      const track=stream.getVideoTracks()[0];
-      const caps=track.getCapabilities?.()||{};
-      // 줌: 상한의 0.75~0.85로 끌어올림
-      if('zoom' in caps){
-        const target = Math.min(caps.max, Math.max(caps.min, caps.max*0.8));
-        await track.applyConstraints({ advanced:[{ zoom: target }] });
-      }
-      // 연속 AF 힌트
-      if (caps.focusMode && caps.focusMode.includes('continuous')) {
-        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-      }
-      // 토치(가능할 때만 잠깐 ON) — 너무 밝으면 다시 꺼짐
-      if('torch' in caps){
-        await track.applyConstraints({ advanced:[{ torch:true }] });
-        torchOn=true;
-        setTimeout(async()=>{ try{ await track.applyConstraints({ advanced:[{ torch:false }] }); }catch(_){} }, 700);
-      }
-    }catch(_){}
-
-    // 스틸샷 정밀 스캔
-    let raw=null;
-    try{
-      const track=stream.getVideoTracks()[0];
-      const ic = new ImageCapture(track);
-      const blob = await ic.takePhoto();
-      const bmp = await createImageBitmap(blob);
-
-      // 1) BarcodeDetector 먼저
-      if('BarcodeDetector' in window){
-        try{
-          const det=new BarcodeDetector({formats:['qr_code']});
-          const r=await det.detect(bmp);
-          raw = r && r[0]?.rawValue || null;
-        }catch(_){}
-      }
-
-      // 2) jsQR 폴백
-      if(!raw){
-        const c=document.createElement('canvas'); c.width=bmp.width; c.height=bmp.height;
-        const cx=c.getContext('2d',{willReadFrequently:true});
-        // 중앙부 72%를 우선 시도 후 실패 시 전체
-        const k=0.72;
-        const sx=(bmp.width*(1-k))/2, sy=(bmp.height*(1-k))/2, sw=bmp.width*k, sh=bmp.height*k;
-        cx.drawImage(bmp, sx, sy, sw, sh, 0, 0, c.width, c.height);
-        let img=cx.getImageData(0,0,c.width,c.height);
-        let qr=jsQR(img.data, c.width, c.height, { inversionAttempts:'attemptBoth' });
-        if(!qr){
-          cx.drawImage(bmp,0,0);
-          img=cx.getImageData(0,0,c.width,c.height);
-          qr=jsQR(img.data, c.width, c.height, { inversionAttempts:'attemptBoth' });
-        }
-        if(qr && qr.data) raw=qr.data;
-      }
-    }catch(_){
-      // takePhoto 미지원 → 현재 프레임 확대 디코드
-      try{
-        const cache={ c:document.createElement('canvas'), x:null }; cache.x=cache.c.getContext('2d',{willReadFrequently:true});
-        let qr=null;
-        for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:true},cache); if(qr&&qr.data) break; }
-        if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true},cache); if(qr&&qr.data) break; } }
-        if(qr && qr.data) raw=qr.data;
-      }catch(__){}
-    }finally{
-      if(torchOn){ try{ const track=stream.getVideoTracks()[0]; await track.applyConstraints({ advanced:[{ torch:false }] }); }catch(_){} }
-      setTimeout(()=>{ tapPulse.style.display='none'; }, 800);
-    }
-
-    if(raw && hasIdField(raw)) onQrDetected(raw);
-    else setMsg('정밀 스캔 실패: 화면을 더 밝게/조금 멀리/다시 탭해보세요.');
-  }
-
-  // 핀치 줌(가능 기기)
-  let pointers=new Map(); let lastPinchDist=null;
-  function getDist(){ const pts=[...pointers.values()]; if(pts.length<2) return null; const dx=pts[0].x-pts[1].x, dy=pts[0].y-pts[1].y; return Math.hypot(dx,dy); }
-  async function applyRelativeZoom(scale){
-    try{
-      const track=stream?.getVideoTracks?.()[0]; if(!track) return;
-      const caps=track.getCapabilities?.()||{}, st=track.getSettings?.()||{};
-      if(!('zoom' in caps)) return;
+  // 소폭 줌(+25%) & AF 힌트 (지원 시만)
+  try{
+    const track=stream.getVideoTracks()[0];
+    const caps=track.getCapabilities?.()||{};
+    if('zoom' in caps){
+      const st=track.getSettings?.()||{};
       const cur=st.zoom ?? caps.min ?? 1;
-      const next=Math.min(caps.max, Math.max(caps.min, cur*scale));
-      await track.applyConstraints({ advanced:[{ zoom: next }] });
+      const target=Math.min(caps.max, Math.max(caps.min, cur*1.25));
+      await track.applyConstraints({ advanced:[{ zoom: target }] });
+    }
+    if (caps.focusMode && caps.focusMode.includes('continuous')) {
+      await track.applyConstraints({ advanced:[{ focusMode:'continuous' }]});
+    }
+  }catch(_){}
+
+  let raw=null;
+
+  // ① 시도: ImageCapture.grabFrame (지원 브라우저/웹캠에서만)
+  try{
+    const track=stream.getVideoTracks()[0];
+    const IC = window.ImageCapture;
+    if (IC && typeof IC === 'function') {
+      const ic = new IC(track);
+      if (ic.grabFrame) {
+        const bmp = await ic.grabFrame();
+        const k=0.70, cw=bmp.width, ch=bmp.height;
+        const sx=Math.round(cw*(1-k)/2), sy=Math.round(ch*(1-k)/2), sw=Math.round(cw*k), sh=Math.round(ch*k);
+        const maxW=1280, outW=Math.min(maxW, sw), outH=Math.round(outW*sh/sw);
+        const c=document.createElement('canvas'); c.width=outW; c.height=outH;
+        const cx=c.getContext('2d',{willReadFrequently:true});
+        cx.drawImage(bmp, sx, sy, sw, sh, 0, 0, outW, outH);
+        if('BarcodeDetector' in window){
+          try{
+            const det=new BarcodeDetector({formats:['qr_code']});
+            const r=await det.detect(c);
+            raw = r && r[0]?.rawValue || null;
+          }catch(_){}
+        }
+        if(!raw){
+          const img=cx.getImageData(0,0,outW,outH);
+          const qr=jsQR(img.data, outW, outH, { inversionAttempts:'attemptBoth' });
+          if(qr && qr.data) raw=qr.data;
+        }
+      }
+    }
+  }catch(_){ /* 계속 폴백 */ }
+
+  // ② 폴백: 현재 video 프레임을 큰 캔버스에 복사 → 디코드 (모든 환경 공통)
+  if(!raw){
+    try{
+      const cache={ c:document.createElement('canvas'), x:null };
+      cache.x=cache.c.getContext('2d',{willReadFrequently:true});
+      let qr=null;
+      // 풀프레임 확대
+      for(const w of [1024, 1280]){ qr=tryDecode(video,{width:w,full:true},cache); if(qr&&qr.data) break; }
+      // 중앙부 확대
+      if(!qr){ for(const w of [1024, 1280]){ qr=tryDecode(video,{width:w,full:false,centerCrop:true},cache); if(qr&&qr.data) break; } }
+      if(qr && qr.data) raw=qr.data;
     }catch(_){}
   }
-  function bindPinch(){
-    const el=video;
-    el.addEventListener('pointerdown', e=>{ el.setPointerCapture(e.pointerId); pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); });
-    el.addEventListener('pointermove', async e=>{
-      if(!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      const d=getDist();
-      if(d && lastPinchDist){
-        const scale = d/lastPinchDist;
-        if(Math.abs(scale-1)>0.02){ await applyRelativeZoom(scale); lastPinchDist=d; }
-      }else if(d){ lastPinchDist=d; }
-    });
-    const end=()=>{ pointers.clear(); lastPinchDist=null; };
-    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end);
-  }
+
+  setTimeout(()=>{ tapPulse.style.display='none'; }, 600);
+  if(raw && /(^|;)\s*id\s*=/.test(raw)) onQrDetected(raw);
+  else setMsg('정밀 스캔 실패: 조명을 밝게 하고 5–10cm 거리에서 다시 탭하세요.');
+}
+
 
   // ===== 버튼 =====
   startQrBtn.onclick=async()=>{
     if(running){ hidePhotoPanel(); stopCamera(); MODE='idle'; setMsg('카메라를 끔'); startQrBtn.textContent='🎥 QR 카메라 ON'; return; }
     try{
       await startQrScan(); startQrBtn.textContent='QR 카메라 OFF';
-      if(isMobile) smoothScrollTo(previewHost,-10);
+      window.scrollTo({top: previewHost.offsetTop - 10, behavior:'smooth'});
     }catch(e){
       setMsg('카메라 오류: '+(e.name||e)); hidePhotoPanel(); stopCamera(); MODE='idle';
       startQrBtn.textContent='🎥 QR 카메라 ON';
@@ -697,17 +637,15 @@
     saveAs(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `qr_scans_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
-  // ===== 탭 이벤트 바인딩 =====
-  video.addEventListener('click', ()=>{ if(MODE==='scan') tapToEnhanceAndScan(); });
-  bindPinch();
+  // ===== 이벤트 =====
+  video.addEventListener('click', tapToEnhanceAndScan, {passive:true});
 
-  // ===== 워치독 & 라이프사이클 =====
-  const HEARTBEAT_MS=500, FREEZE_TICKS=6; // 3초 정지 시 재시작
+  // ===== 워치독 =====
+  const HEARTBEAT_MS=500, FREEZE_TICKS=6;
   setInterval(async ()=>{
     if (document.visibilityState !== 'visible') return;
     if (!running) return;
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-
     const t = video.currentTime || 0;
     if (t === lastVideoTime) stillTicks++; else stillTicks = 0;
     lastVideoTime = t;
@@ -726,6 +664,11 @@
 
   window.addEventListener('beforeunload', ()=>{ try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){ } });
 
+  // 헬퍼들
+  function isStreamHealthy(){
+    const track = stream?.getVideoTracks?.()[0];
+    return !!(track && track.readyState === 'live' && track.enabled !== false);
+  }
 })();
 </script>
 </body>
