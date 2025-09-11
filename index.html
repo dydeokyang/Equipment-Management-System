@@ -1,92 +1,65 @@
----
----
 <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>디와이덕양 비품관리</title>
-
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-<meta http-equiv="Pragma" content="no-cache"/>
-<meta http-equiv="Expires" content="0"/>
-
-<script>
-(function () {
-  const APP_VERSION = '{{ site.time | date: "%Y%m%d%H%M%S" }}';
-  const url = new URL(location.href);
-  if (url.searchParams.get('v') !== APP_VERSION) {
-    url.searchParams.set('v', APP_VERSION);
-    location.replace(url.toString());
-  }
-})();
-</script>
-
 <style>
   :root{
-    --bg:#fff; --fg:#16181b; --muted:#667085; --border:#e6e8eb;
-    --shadow:0 4px 14px rgba(0,0,0,.08);
-    --chip-id:#eef2ff;     --chip-id-text:#1d4ed8;
-    --chip-name:#ecfdf5;   --chip-name-text:#065f46;
-    --chip-loc:#fff7ed;    --chip-loc-text:#9a3412;
-    --chip-owner:#fef2f2;  --chip-owner-text:#b91c1c;
+    --bg:#fff; --fg:#16181b; --muted:#667085; --border:#e6e8eb; --shadow:0 4px 14px rgba(0,0,0,.08);
+    --chip-id:#eef2ff; --chip-id-text:#1d4ed8; --chip-name:#ecfdf5; --chip-name-text:#065f46;
+    --chip-loc:#fff7ed; --chip-loc-text:#9a3412; --chip-owner:#fef2f2; --chip-owner-text:#b91c1c;
+    --focus:#0ea5e9; --okbg:#ecfdf5; --ok:#065f46;
   }
-  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;background:var(--bg);color:var(--fg);
-       max-width:860px;margin:28px auto;padding:0 16px}
+  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;background:var(--bg);color:var(--fg);max-width:980px;margin:28px auto;padding:0 16px}
   h1{font-size:22px;margin:14px 0}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
-  button{font-size:16px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
+  button{font-size:16px;padding:10px 16px;border:1px solid var(--border);border-radius:10px;background:#fff;cursor:pointer}
   button:hover{border-color:#c9ced6}
+  label.chk{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:#fff}
+  label.chk input{width:18px;height:18px}
+  .count{margin-left:auto;color:#333;font-size:14px}
+  #msg{margin:8px 2px;color:#475569}
 
-  /* 미리보기 컨테이너(고정 비율/크기) */
-  #preview{
-    position:relative;
-    width:100%;
-    max-width:520px;
-    aspect-ratio: 1 / 1;   /* 4/3 원하면 4 / 3 */
-    overflow:hidden;
-    border:1px solid var(--border);
-    border-radius:12px;
-    margin:10px 0;
-    box-shadow:var(--shadow);
-    display:none;          /* start()에서 보임 */
-  }
-  /* 영상/오버레이 */
-  #video, #overlay{
-    position:absolute; inset:0;
-    width:100%; height:100%;
-    display:none;          /* start()에서 보임 */
-    object-fit:cover; object-position:center;
-    pointer-events:none;
-  }
+  /* 미리보기 공용 */
+  #previewHost{margin:10px 0}
+  #preview{position:relative;width:100%;max-width:560px;aspect-ratio:1/1;overflow:hidden;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);display:none;background:transparent}
+  #video,#overlay{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:cover;object-position:center;pointer-events:none;background:transparent}
 
-  .card{background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px;margin:14px 0}
+  .card{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin:16px 0}
   .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
   table{border-collapse:separate;border-spacing:0;width:100%}
-  th,td{padding:12px 12px;border-bottom:1px solid var(--border);text-align:left;word-break:break-all}
+  th,td{padding:12px;border-bottom:1px solid var(--border);text-align:left;word-break:break-all}
   tbody tr:nth-child(even){background:#fcfdff}
   tbody tr:last-child td, tbody tr:last-child th{border-bottom:0}
-  #msg{color:#b00;margin:6px 2px}
-  .count{margin-left:auto;color:#333;font-size:14px}
-  .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-
-  th.key{font-weight:600;border:0;background:transparent;padding:6px 0}
+  th.key{font-weight:600;background:transparent;padding:6px 0}
   .chip{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px}
-  .chip.id   {background:var(--chip-id);   color:var(--chip-id-text)}
-  .chip.name {background:var(--chip-name); color:var(--chip-name-text)}
-  .chip.loc  {background:var(--chip-loc);  color:var(--chip-loc-text)}
+  .chip.id{background:var(--chip-id);color:var(--chip-id-text)}
+  .chip.name{background:var(--chip-name);color:var(--chip-name-text)}
+  .chip.loc{background:var(--chip-loc);color:var(--chip-loc-text)}
   .chip.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
 
-  .list{display:grid;grid-template-columns:1fr;gap:12px}
-  @media (min-width:680px){ .list{grid-template-columns:1fr 1fr} }
+  /* 비품 촬영 패널 */
+  .photo-step{display:none;margin-top:14px;border:2px dashed var(--focus);border-radius:12px;padding:12px}
+  .photo-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;background:var(--okbg);color:var(--ok);border:1px solid #cce7dd;padding:8px 10px;border-radius:8px;font-weight:600}
+  .photo-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;align-items:start}
+  @media (max-width:900px){ .photo-grid{grid-template-columns:1fr} }
+  .photo-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .photo-slot{position:relative;width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:2px solid var(--focus);background:transparent}
+  .photo-slot #photoLive{display:block;width:100%;height:100%}
+  .hint{font-size:13px;color:#475569;margin-top:6px}
+  .actions{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+
+  .list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:760px){ .list{grid-template-columns:1fr} }
   .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;box-shadow:var(--shadow)}
   .item .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
   .item .time{font-size:13px;color:#334155;background:#f1f5f9;border-radius:6px;padding:4px 8px}
   .badges{display:flex;flex-wrap:wrap;gap:6px}
   .badge{font-size:12px;border-radius:999px;padding:3px 8px}
-  .badge.id   {background:var(--chip-id);   color:var(--chip-id-text)}
-  .badge.name {background:var(--chip-name); color:var(--chip-name-text)}
-  .badge.loc  {background:var(--chip-loc);  color:var(--chip-loc-text)}
+  .badge.id{background:var(--chip-id);color:var(--chip-id-text)}
+  .badge.name{background:var(--chip-name);color:var(--chip-name-text)}
+  .badge.loc{background:var(--chip-loc);color:var(--chip-loc-text)}
   .badge.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
 </style>
 </head>
@@ -94,435 +67,426 @@
 <h1>QR 스캐너</h1>
 
 <div class="row">
-  <button id="startBtn">카메라 시작</button>
-  <button id="exportBtn">CSV 내보내기</button>
-  <button id="clearBtn"  title="저장된 모든 레코드를 삭제합니다.">초기화</button>
+  <button id="startQrBtn">QR 카메라 켜기</button>
+  <button id="exportXlsxBtn">엑셀 내보내기</button>
+  <button id="clearBtn">초기화</button>
+  <label class="chk" title="체크 해제하면 사진 없이 즉시 저장합니다.">
+    <input id="requirePhotoChk" type="checkbox" checked> 비품 사진 촬영
+  </label>
   <span class="count" id="count">저장 0건</span>
 </div>
 
-<div id="preview">
-  <video id="video" playsinline muted></video>
-  <canvas id="overlay"></canvas>
+<!-- 미리보기(공용) -->
+<div id="previewHost">
+  <div id="preview">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
 </div>
-<p id="msg"></p>
 
-<div class="card">
+<p id="msg">QR을 화면 중앙에 크게 맞춰주세요.</p>
+
+<div class="card" id="infoCard">
   <h2>비품정보</h2>
-  <div class="subtitle">스캔 즉시 아래 표에 표시됩니다.</div>
+  <div class="subtitle">스캔 즉시 아래 표와 비품 촬영 패널에 반영됩니다.</div>
   <table id="tbl"><tbody></tbody></table>
+
+  <!-- 비품 촬영 패널 -->
+  <div id="photoStep" class="photo-step">
+    <div class="photo-head">QR 정상 인식됨 → 지금 비품 사진을 촬영하세요(처리용량 초과시 저장이 안될수 있습니다. 저장후 초기화를 하세요)</div>
+    <div class="photo-grid">
+      <div>
+        <div class="photo-chips" id="photoChips"></div>
+        <div class="hint">비품 전체가 보이도록 카메라를 맞춘 뒤 <strong>비품 사진 촬영</strong>을 누르세요.</div>
+        <div class="actions">
+          <button id="shotBtn" class="btn-primary">비품 사진 촬영</button>
+          <button id="skipBtn" class="btn-ghost">사진 건너뛰기</button>
+        </div>
+      </div>
+      <div class="photo-slot">
+        <!-- 비디오를 옮기지 않고 캔버스에 미러링 -->
+        <canvas id="photoLive"></canvas>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="card">
-  <h2>최근 저장 목록 <span class="mono" style="font-size:12px;color:#475569">(KST 기준)</span></h2>
+  <h2>최근 저장 목록</span></h2>
   <div class="subtitle">같은 항목을 다시 스캔해도 중복 저장하지 않고, 시간만 갱신합니다.</div>
   <div id="list" class="list"></div>
 </div>
 
-<!-- jsQR: 상대경로 -->
+<!-- 라이브러리 -->
 <script src="libs/jsQR.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+<script src="libs/FileSaver.min.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+<script src="libs/exceljs.min.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
 
 <script>
-(() => {
-  // ===== 노브 =====
-  const DEBUG = false;
-  const TARGET = 640;      // 560~720
-  const WARMUP_FRAMES = 6;
-  const STACK_N = 3;
-  const FRAME_GAP = 80;    // 60~100
+(()=> {
+  const DEBUG=false, TARGET=640, WARMUP_FRAMES=6;
 
-  const preview  = document.getElementById('preview');
-  const video    = document.getElementById('video');
-  const overlay  = document.getElementById('overlay');
-  const ox       = overlay.getContext('2d');
-  const msg      = document.getElementById('msg');
-  const tbody    = document.querySelector('#tbl tbody');
-  const listEl   = document.getElementById('list');
-  const countEl  = document.getElementById('count');
-  const startBtn = document.getElementById('startBtn');
+  const startQrBtn=document.getElementById('startQrBtn');
+  const exportXlsxBtn=document.getElementById('exportXlsxBtn');
+  const clearBtn=document.getElementById('clearBtn');
+  const requirePhotoChk=document.getElementById('requirePhotoChk');
 
-  let stream = null, running = false;
+  const previewHost=document.getElementById('previewHost');
+  const preview=document.getElementById('preview');
+  const video=document.getElementById('video');
+  const overlay=document.getElementById('overlay');
+  const ox=overlay.getContext('2d');
 
-  // 유령 재검출 방지 상태
-  let SESSION_ID = 0;
-  let lastAccepted = { value: null, at: 0 };
+  const msg=document.getElementById('msg');
+  const tbody=document.querySelector('#tbl tbody');
+  const photoStep=document.getElementById('photoStep');
+  const photoChips=document.getElementById('photoChips');
+  const photoLive=document.getElementById('photoLive');
+  const photoCtx=photoLive.getContext('2d', { willReadFrequently:true });
+  const shotBtn=document.getElementById('shotBtn');
+  const skipBtn=document.getElementById('skipBtn');
+  const listEl=document.getElementById('list');
+  const countEl=document.getElementById('count');
 
-  const isIOS = (() => {
-    const ua = navigator.userAgent || '';
-    const iOSDevice = /iP(hone|ad|od)/.test(ua);
-    const webkit = /WebKit/.test(ua);
-    const isCriOS = /CriOS/.test(ua);
-    return (iOSDevice && webkit) || isCriOS;
-  })();
+  let stream=null, running=false;
+  let MODE='idle'; // idle | scan | photo
+  let pendingParsed=null
+  let photoRAF=null;
 
-  // 저장
-  let records = loadRecords(); renderList();
-  function loadRecords(){ try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); } catch(e){ return []; } }
-  function saveRecords(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
-  function setMsg(t){ msg.textContent = t || ''; }
-
-  // 시간(KST)
-  function fmtKST(d){
-    const p = new Intl.DateTimeFormat('ko-KR',{ timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).formatToParts(d);
-    const g = t => p.find(x=>x.type===t)?.value || '';
-    return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
+  // ---- 스토리지 ----
+  let records=load(); renderList();
+  function load(){ try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); }catch(_){ return []; } }
+  function save(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
+  function nowKST(){
+    const p=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(new Date());
+    const g=t=>p.find(x=>x.type===t)?.value||''; return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
   }
-  function nowKST(){ return fmtKST(new Date()); }
-
-  function dedupeKey(o){ const id=(o.id??'').trim(); return id ? 'ID:'+id.toLowerCase() : 'RAW:'+String(o.raw??''); }
-
-  function parseQR(text){
-    let obj = {};
-    try { const j = JSON.parse(text); if (j && typeof j==='object') obj = j; }
-    catch {
-      if (text.includes('=')) {
-        text.split(';').forEach(pair=>{
-          const pos = pair.indexOf('='); if (pos<0) return;
-          const k = pair.slice(0,pos).trim(); const v = pair.slice(pos+1).trim();
-          if (k) obj[k] = v;
-        });
-      } else if (text.includes(':')) {
-        const parts = text.split(':');
-        if (parts.length >= 4) { obj.id=parts[0].trim(); obj.name=parts[1].trim(); obj.loc=parts[2].trim(); obj.owner=parts[3].trim(); }
-      }
-    }
-    return { id:obj.id??'', name:obj.name??'', loc:obj.loc??'', owner:obj.owner??'', raw:text };
+  function esc(s){ return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function dedupeKey(o){ const id=(o.id||'').trim(); return id ? 'ID:'+id.toLowerCase() : 'RAW:'+String(o.raw||''); }
+  function upsert(o){
+    const k=dedupeKey(o), t=nowKST(); const i=records.findIndex(r=>r._key===k);
+    if(i>=0) records[i]={...records[i], ...o, scanned_at_kst:t};
+    else records.push({_key:k, ...o, scanned_at_kst:t});
+    save(); renderList();
   }
-
-  const FIELD_ORDER = [
-    {key:'id',    label:'비품번호', class:'id'},
-    {key:'name',  label:'비품명',   class:'name'},
-    {key:'loc',   label:'위치',     class:'loc'},
-    {key:'owner', label:'사용자',   class:'owner'},
-  ];
-
-  function renderTable(o){
-    tbody.innerHTML='';
-    FIELD_ORDER.forEach(({key,label,class:cls})=>{
-      const tr=document.createElement('tr');
-      const th=document.createElement('th'); th.className='key'; th.innerHTML=`<span class="chip ${cls}">${label}</span>`;
-      const td=document.createElement('td'); td.textContent=o[key]??'';
-      tr.append(th,td); tbody.appendChild(tr);
-    });
-  }
-
-  function upsertRecord(o){
-    const key = dedupeKey(o);
-    const kst = nowKST();
-    const idx = records.findIndex(r => r._key===key);
-    if (idx>=0){
-      const updated={...records[idx], id:o.id,name:o.name,loc:o.loc,owner:o.owner,raw:o.raw, scanned_at_kst:kst};
-      records.splice(idx,1); records.push(updated);
-      setMsg('이미 저장된 항목입니다. 시간만 갱신했어요.');
-    } else {
-      records.push({_key:key, id:o.id,name:o.name,loc:o.loc,owner:o.owner, raw:o.raw, scanned_at_kst:kst});
-      setMsg('');
-    }
-    saveRecords(); renderList();
-    document.querySelector('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
-  }
-
   function renderList(){
-    listEl.innerHTML=''; countEl.textContent=`저장 ${records.length}건`;
+    countEl.textContent=`저장 ${records.length}건`; listEl.innerHTML='';
     records.slice().reverse().forEach(r=>{
-      const card=document.createElement('div'); card.className='item';
-      card.innerHTML = `
-        <div class="head"><div class="time mono">${r.scanned_at_kst}</div></div>
+      const d=document.createElement('div'); d.className='item';
+      d.innerHTML=`<div class="head"><div class="time mono">${r.scanned_at_kst}</div></div>
         <div class="badges">
           <span class="badge id">비품번호: ${esc(r.id)}</span>
           <span class="badge name">비품명: ${esc(r.name)}</span>
           <span class="badge loc">위치: ${esc(r.loc)}</span>
           <span class="badge owner">사용자: ${esc(r.owner)}</span>
         </div>`;
-      listEl.appendChild(card);
+      listEl.appendChild(d);
     });
   }
+  function setMsg(t){ msg.textContent=t||''; }
 
-  function esc(s){ return String(s??'').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+  // ---- 체크박스 상태 기억 ----
+  const savedRequirePhoto = localStorage.getItem('require_photo');
+  if (savedRequirePhoto !== null) requirePhotoChk.checked = savedRequirePhoto === '1';
+  requirePhotoChk.addEventListener('change', () => {
+    localStorage.setItem('require_photo', requirePhotoChk.checked ? '1' : '0');
+  });
 
-  // 버튼 상태 업데이트
-  function updateStartBtn(){
-    startBtn.textContent = running ? '카메라 끄기' : '카메라 시작';
+  // ---- 미리보기 표시 ----
+  function showPreview(b){
+    preview.style.display=b?'block':'none';
+    video.style.display=b?'block':'none';
+    overlay.style.display=(b && DEBUG)?'block':'none';
+  }
+  async function ensureVisible(){
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    try{ if(video.paused || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) await video.play(); }catch(_){}
+    if(video.videoWidth && video.videoHeight){ overlay.width=video.videoWidth; overlay.height=video.videoHeight; }
   }
 
-  // 완전 정지 + 프레임 초기화
-  function stop(){
-    running=false;
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-    try { video.pause(); } catch(_) {}
-    video.srcObject=null;
-    video.load(); // 이전 프레임 끊기
-    ox && ox.clearRect(0,0,overlay.width,overlay.height);
-    video.style.display='none';
-    overlay.style.display='none';
-    preview.style.display='none';
-    updateStartBtn();
-  }
-
-  function expect(cond, message){
-    if(!cond){ setMsg(message); throw new Error(message); }
-  }
-
-  // 카메라 시작(토글) -----------------------------------------------------
-  async function handleStartClick(){
-    if (running) { // 수동 끄기
-      stop();
-      return;
-    }
-    await start(); // 시작
-  }
-
-  async function start(){
-    expect(!!window.jsQR, 'jsQR가 로드되지 않았습니다. libs/jsQR.js 경로(배포 여부)를 확인하세요.');
-    expect(location.protocol==='https:' || location.hostname==='localhost', 'HTTPS 또는 localhost에서만 동작합니다.');
-    expect(!!navigator.mediaDevices?.getUserMedia, '이 브라우저는 카메라 API를 지원하지 않습니다.');
-
-    try{
-      stop(); // 이전 세션 정리
-      const mySession = ++SESSION_ID;
-
-      // 미리보기/영상 보이기
-      preview.style.display='block';
-      video.style.display='block';
-      overlay.style.display = DEBUG ? 'block' : 'none';
-
-      // iOS 자동재생/인라인
-      video.setAttribute('playsinline',''); video.setAttribute('muted',''); video.muted = true;
-
-      // UI: 시작 중 잠깐 비활성화
-      startBtn.disabled = true;
-
-      stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
-        audio:false
-      });
-
-      // 새 스트림 연결 전에 완전 초기화
-      video.srcObject = null;
-      video.load();
-      video.srcObject = stream;
-
-      // 프레임 준비 대기
-      if (video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
-        await new Promise(resolve => {
-          const onReady = ()=>resolve();
-          video.addEventListener('loadeddata', onReady, { once:true });
-          video.addEventListener('canplay',    onReady, { once:true });
-        });
+  // ---- 캔버스 미러 (촬영 패널 표시용) ----
+  function startPhotoLive(){
+    const vw=video.videoWidth||1280, vh=video.videoHeight||720;
+    photoLive.width=vw; photoLive.height=vh;
+    if(photoRAF) cancelAnimationFrame(photoRAF);
+    const draw=()=>{
+      if(MODE==='photo' && running && video.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
+        photoCtx.drawImage(video,0,0,photoLive.width,photoLive.height);
       }
-      await video.play();
+      photoRAF=requestAnimationFrame(draw);
+    };
+    photoRAF=requestAnimationFrame(draw);
+  }
+  function stopPhotoLive(){
+    if(photoRAF) cancelAnimationFrame(photoRAF);
+    photoRAF=null;
+    photoCtx.clearRect(0,0,photoLive.width,photoLive.height);
+  }
 
-      overlay.width  = video.videoWidth  || 640;
-      overlay.height = video.videoHeight || 480;
+  // ---- 카메라 ----
+  async function startCamera(){
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+      audio:false
+    });
+    video.srcObject=null; video.load(); video.srcObject=stream;
+    await new Promise(r=>{
+      if(video.readyState>=HTMLMediaElement.HAVE_ENOUGH_DATA) return r();
+      const ok=()=>r(); video.addEventListener('loadeddata',ok,{once:true}); video.addEventListener('canplay',ok,{once:true});
+    });
+    await video.play().catch(()=>{});
+    overlay.width=video.videoWidth||640; overlay.height=video.videoHeight||480;
+    running=true; showPreview(true);
+  }
+  function stopCamera(){
+    try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
+    stream=null; running=false;
+    try{ video.pause(); }catch(_){}
+    video.srcObject=null; video.load();
+    showPreview(false); ox.clearRect(0,0,overlay.width,overlay.height);
+  }
 
-      running = true;
-      updateStartBtn();
-      startBtn.disabled = false;
+  // ---- QR 스캔 ----
+  let accept={v:null,at:0};
+  function canAccept(v){ const now=performance.now(); if(v && accept.v===v && now-accept.at<1200) return false; accept={v,at:now}; return true; }
 
-      setMsg(DEBUG ? `카메라 시작: ${overlay.width}x${overlay.height} / iOS:${isIOS?'Y':'N'}` : 'QR을 화면 중앙에 크게 맞춰주세요…');
+  async function startQrScan(){
+  MODE='scan'; 
+  setMsg('QR을 화면 중앙에 크게 맞춰주세요…');
 
-      // 세션 내 허상 방지
-      const confirm = { value:null, count:0 };
-      const acceptIfFresh = (val)=>{
-        const now = performance.now();
-        if (val && lastAccepted.value === val && now - lastAccepted.at < 1500) return false;
-        if (confirm.value === val) confirm.count++;
-        else { confirm.value = val; confirm.count = 1; }
-        if (confirm.value && confirm.count >= 2) {
-          lastAccepted = { value: confirm.value, at: now };
-          return true;
-        }
-        return false;
-      };
+  if(preview.parentNode!==previewHost) previewHost.appendChild(preview);
+  await startCamera(); 
+  await ensureVisible();
 
-      if (isIOS) { jsqrFallback(()=>SESSION_ID!==mySession, acceptIfFresh); return; }
+  // QR 모드: video 보이기, photoLive 숨기기
+  showPreview(true);
+  photoLive.style.display='none';
+  overlay.style.display='none';
 
-      // AND/데스크: 레이스
-      let resolved = false;
-      const win = (val)=>{
-        if (!running || resolved) return true;
-        if (val && acceptIfFresh(val)) {
-          resolved = true;
-          stop();
-          const parsed = parseQR(val);
-          renderTable(parsed);
-          upsertRecord(parsed);
-          return true;
-        }
-        return false;
-      };
-
-      const runDetector = async ()=>{
-        if(!('BarcodeDetector' in window)) return;
-        const detector = new BarcodeDetector({ formats:['qr_code'] });
-        const loop = async ()=>{
-          if(!running || resolved || SESSION_ID!==mySession) return;
-          try{
-            const found = await detector.detect(video);
-            const val = found && found[0]?.rawValue;
-            if (win(val)) return;
-          }catch(_) {}
-          requestAnimationFrame(loop);
-        };
-        loop();
-      };
-
-      const runJsQR = ()=>{
-        setTimeout(()=>{ if(!resolved && running && SESSION_ID===mySession) jsqrFallback(()=>resolved || SESSION_ID!==mySession, acceptIfFresh); }, 400);
-      };
-
-      runDetector();
-      runJsQR();
-
-      // (선택) 초점/줌 힌트
-      try {
-        const track = stream?.getVideoTracks?.()[0];
-        const caps  = track?.getCapabilities?.() || {};
-        const cons  = { advanced: [] };
-        if (caps?.focusMode?.length) cons.advanced.push({ focusMode: 'continuous' });
-        if (caps?.zoom) {
-          const mid = (caps.zoom.min + caps.zoom.max) / 2;
-          cons.advanced.push({ zoom: Math.min(Math.max(mid, caps.zoom.min), caps.zoom.max) });
-        }
-        if (cons.advanced.length) await track.applyConstraints(cons);
-      } catch(_) {}
-    }catch(e){
-      startBtn.disabled = false;
-      const map={NotAllowedError:'카메라 권한이 거부되었습니다. 브라우저/사이트 설정에서 허용해주세요.',
-                 NotFoundError:'카메라 장치를 찾을 수 없습니다.',
-                 NotReadableError:'다른 앱이 카메라 사용 중입니다.',
-                 OverconstrainedError:'카메라 조건을 만족하지 못했습니다.',
-                 SecurityError:'보안 정책으로 차단되었습니다.'};
-      setMsg(map[e.name]||`카메라 오류: ${e.name||e}`);
-      stop();
-    }
+  // BarcodeDetector 우선
+  if('BarcodeDetector' in window){
+    const det=new BarcodeDetector({formats:['qr_code']});
+    (async function loop(){
+      if(MODE!=='scan' || !running) return;
+      try{
+        const r=await det.detect(video); 
+        const val=r&&r[0]?.rawValue;
+        if(val && canAccept(val)) return onQrDetected(val);
+      }catch(_){}
+      requestAnimationFrame(loop);
+    })();
   }
 
   // jsQR 폴백
-  function jsqrFallback(isCanceled, acceptIfFresh){
-    const c = document.createElement('canvas');
-    const x = c.getContext('2d', { willReadFrequently: true });
-    x.imageSmoothingEnabled = false;
+  const c=document.createElement('canvas'); 
+  const x=c.getContext('2d',{willReadFrequently:true});
+  let frame=0;
+  (function loop(){
+    if(MODE!=='scan' || !running) return;
+    if(video.readyState!==video.HAVE_ENOUGH_DATA) return requestAnimationFrame(loop);
+    const vw=video.videoWidth||640, vh=video.videoHeight||480; 
+    const s=Math.min(vw,vh); const sx=(vw-s)>>1, sy=(vh-s)>>1;
+    c.width=TARGET; c.height=TARGET; 
+    x.drawImage(video,sx,sy,s,s,0,0,TARGET,TARGET);
+    if(frame++<WARMUP_FRAMES) return requestAnimationFrame(loop);
+    const img=x.getImageData(0,0,TARGET,TARGET); 
+    const qr=jsQR(img.data,TARGET,TARGET,{inversionAttempts:'attemptBoth'});
+    if(qr && qr.data && canAccept(qr.data)) return onQrDetected(qr.data);
+    requestAnimationFrame(loop);
+  })();
+}
 
-    const target   = TARGET;
-    const minGapMs = FRAME_GAP;
-    let frame = 0, last = 0, cancel = false;
-    const stack = [];
 
-    const drawDebug = (text, corners)=>{
-      if(!DEBUG) return;
-      ox.clearRect(0,0,overlay.width,overlay.height);
-      ox.fillStyle='rgba(0,0,0,.55)'; ox.fillRect(6,6, overlay.width*0.7, 28);
-      ox.fillStyle='#fff'; ox.font='16px ui-monospace,monospace'; ox.fillText(text, 14, 26);
-      if(corners){
-        ox.strokeStyle='lime'; ox.lineWidth=3; ox.beginPath();
-        ox.moveTo(corners.topLeft.x, corners.topLeft.y);
-        ox.lineTo(corners.topRight.x, corners.topRight.y);
-        ox.lineTo(corners.bottomRight.x, corners.bottomRight.y);
-        ox.lineTo(corners.bottomLeft.x, corners.bottomLeft.y);
-        ox.closePath(); ox.stroke();
+  function parseQR(text){
+    let obj={};
+    try{ const j=JSON.parse(text); if(j && typeof j==='object') obj=j; }
+    catch{
+      if(text.includes('=')){
+        text.split(';').forEach(p=>{const i=p.indexOf('='); if(i<0) return; obj[p.slice(0,i).trim()]=p.slice(i+1).trim();});
+      }else if(text.includes(':')){
+        const a=text.split(':'); if(a.length>=4){ obj.id=a[0].trim(); obj.name=a[1].trim(); obj.loc=a[2].trim(); obj.owner=a[3].trim(); }
       }
-    };
+    }
+    return { id:obj.id??'', name:obj.name??'', loc:obj.loc??'', owner:obj.owner??'', raw:text };
+  }
 
-    const runOnce = ()=>{
-      if(!running || cancel) return;
-      if (typeof isCanceled==='function' && isCanceled()) return;
-      if(video.readyState !== video.HAVE_ENOUGH_DATA) return;
+  function renderTable(o){
+    const rows=[['비품번호','id','id'],['비품명','name','name'],['위치','loc','loc'],['사용자','owner','owner']];
+    tbody.innerHTML='';
+    rows.forEach(([label,key,cls])=>{
+      const tr=document.createElement('tr');
+      const th=document.createElement('th'); th.className='key'; th.innerHTML=`<span class="chip ${cls}">${label}</span>`;
+      const td=document.createElement('td'); td.textContent=o[key]??'';
+      tr.append(th,td); tbody.appendChild(tr);
+    });
+  }
+  function renderChips(o){
+    photoChips.innerHTML=`<span class="chip id">비품번호: ${esc(o.id)}</span>
+    <span class="chip name">비품명: ${esc(o.name)}</span>
+    <span class="chip loc">위치: ${esc(o.loc)}</span>
+    <span class="chip owner">사용자: ${esc(o.owner)}</span>`;
+  }
 
-      const vw = video.videoWidth  || 640;
-      const vh = video.videoHeight || 480;
-      const side = Math.min(vw, vh);
-      const sx = (vw - side) >> 1, sy = (vh - side) >> 1;
+  async function onQrDetected(val){
+  const parsed=parseQR(val);
+  renderTable(parsed);
 
-      c.width = target; c.height = target;
-      x.drawImage(video, sx, sy, side, side, 0, 0, target, target);
+  if(!requirePhotoChk.checked){
+    stopCamera(); MODE='idle';
+    upsert({...parsed, imgDataUrl:null});
+    setMsg('사진 없이 저장했습니다.');
+    return;
+  }
 
-      if (frame++ < WARMUP_FRAMES) { drawDebug('warming up…', null); return; }
+  // 사진 필요: 상태 보관 + QR 미리보기(작게)
+  pendingParsed=parsed;
 
-      const img = x.getImageData(0, 0, target, target);
-      const buf = new Uint8ClampedArray(img.data.length);
-      for (let i=0;i<img.data.length;i+=4){
-        const r=img.data[i], g=img.data[i+1], b=img.data[i+2];
-        const y = (r*0.2126 + g*0.7152 + b*0.0722)|0;
-        buf[i]=buf[i+1]=buf[i+2]=y; buf[i+3]=255;
-      }
-      stack.push(buf);
-      if (stack.length > STACK_N) stack.shift();
+  // 스캔만 중지
+  MODE='photo';
+  renderChips(parsed);
+  photoStep.style.display='block';
 
-      if (stack.length === STACK_N){
-        for (let i=0;i<img.data.length;i+=4){
-          let m = 255;
-          for (let k=0;k<STACK_N;k++) if (stack[k][i] < m) m = stack[k][i];
-          img.data[i]=img.data[i+1]=img.data[i+2]=m;
-        }
-      } else {
-        for (let i=0;i<img.data.length;i+=4){
-          img.data[i]=img.data[i+1]=img.data[i+2]=buf[i];
-        }
-      }
+  // ▶ QR 프리뷰 감추고 캔버스 켜기
+  showPreview(false);             // video 숨김
+  photoLive.style.display='block';
 
-      let lo=255, hi=0;
-      for (let i=0;i<img.data.length;i+=16){ const v=img.data[i]; if(v<lo)lo=v; if(v>hi)hi=v; }
-      const span=Math.max(40, hi-lo), a=255/span, b0=-a*lo;
-      for (let i=0;i<img.data.length;i+=4){
-        let v = img.data[i]; v = a*v + b0; if(v<0)v=0; if(v>255)v=255;
-        img.data[i]=img.data[i+1]=img.data[i+2]=v;
-      }
+  await ensureVisible();
+  startPhotoLive(); // 미러 시작
+  setMsg('비품을 프레임에 맞춰 [비품 사진 촬영]을 눌러주세요.');
+}
 
-      const t1 = performance.now();
-      const qr = jsQR(img.data, target, target, { inversionAttempts: 'attemptBoth' });
-      const fps = Math.round(1000 / Math.max(1, (t1 - last || minGapMs))); last = t1;
 
-      if (qr && qr.data){
-        if (acceptIfFresh && !acceptIfFresh(qr.data)) { drawDebug(`checking… fps:${fps}`, null); return; }
+  // 캡처
+  async function capture(videoEl, maxW=640){
+  const vw = videoEl.videoWidth || 640;
+  const vh = videoEl.videoHeight || 480;
+  const s  = Math.min(1, maxW / vw);
+  const w  = Math.round(vw * s);
+  const h  = Math.round(vh * s);
 
-        // 성공: 자동 정지 + 데이터 반영
-        stop();
-        const parsed=parseQR(qr.data); renderTable(parsed); upsertRecord(parsed);
-      } else {
-        drawDebug(`scanning… fps:${fps}`, null);
-      }
-    };
+  const c = document.createElement('canvas');
+  c.width  = w;
+  c.height = h;
+  c.getContext('2d', {willReadFrequently:true}).drawImage(videoEl, 0, 0, w, h);
 
-    const rVFC = video.requestVideoFrameCallback?.bind(video);
-    if (rVFC) {
-      const onFrame = (now)=>{ if(!running || cancel) return; if (typeof isCanceled==='function' && isCanceled()) return; if(now - last >= minGapMs){ runOnce(); } rVFC(onFrame); };
-      rVFC(onFrame);
-    } else {
-      (function loop(){ if(!running || cancel) return; if (typeof isCanceled==='function' && isCanceled()) return; const now=performance.now(); if(now - last >= minGapMs){ runOnce(); } requestAnimationFrame(loop); })();
+  // ✅ 품질 0.7로 조정 (기존 0.9보다 용량 줄어듦)
+  return c.toDataURL('image/jpeg', 0.7);
+}
+
+
+  // ---- 버튼 동작 ----
+  startQrBtn.onclick = async () => {
+  if (running) {
+    // 이미 켜져있으면 → 끄기
+    stopPhotoLive();
+    stopCamera();
+    MODE = 'idle';
+    setMsg('카메라를 끔');
+    startQrBtn.textContent = 'QR 카메라 켜기';   // 🔴 버튼 텍스트 변경
+    return;
+  }
+
+  try {
+    await startQrScan();
+    startQrBtn.textContent = 'QR 카메라 끄기';   // 🟢 켰을 때 변경
+  } catch (e) {
+    setMsg('카메라 오류: ' + (e.name || e));
+    stopPhotoLive();
+    stopCamera();
+    MODE = 'idle';
+    startQrBtn.textContent = 'QR 카메라 켜기';   // 에러 시도 기본으로
+  }
+};
+
+
+  shotBtn.onclick=async()=>{
+  if(MODE!=='photo' || !pendingParsed) return;
+  const img=await capture(video, 960).catch(()=>null);
+
+  stopPhotoLive();
+  photoLive.style.display='none';   // 캔버스 감춤
+  stopCamera(); 
+  MODE='idle';
+
+  upsert({...pendingParsed, imgDataUrl:img});
+  pendingParsed=null;
+  photoStep.style.display='none';
+  setMsg('저장 완료');
+  
+  startQrBtn.textContent = 'QR 카메라 켜기';
+};
+
+skipBtn.onclick=async()=>{
+  if(MODE!=='photo' || !pendingParsed) return;
+
+  stopPhotoLive();
+  photoLive.style.display='none';   // 캔버스 감춤
+  stopCamera(); 
+  MODE='idle';
+
+  upsert({...pendingParsed, imgDataUrl:null});
+  pendingParsed=null;
+  photoStep.style.display='none';
+  setMsg('사진 없이 저장했습니다.');
+  startQrBtn.textContent = 'QR 카메라 켜기';
+};
+
+
+  clearBtn.onclick=()=>{
+    if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
+    records=[]; save(); renderList(); tbody.innerHTML=''; setMsg('초기화 완료');
+  };
+
+  // ---- XLSX 내보내기 (사진 포함) ----
+  exportXlsxBtn.onclick = async () => {
+  if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('QR Scans');
+
+  // ✅ QR미리보기 컬럼 제거 (비품사진만 유지)
+  ws.columns = [
+    {header:'스캔시각', width:22},
+    {header:'비품번호', width:18},
+    {header:'비품명',   width:28},
+    {header:'위치',     width:18},
+    {header:'사용자',   width:18},
+    {header:'비품사진', width:28}
+  ];
+  ws.getRow(1).height = 22;
+
+  let rowIdx = 2;
+  for(const r of records){
+    ws.addRow([
+      r.scanned_at_kst||'',
+      r.id||'',
+      r.name||'',
+      r.loc||'',
+      r.owner||'',
+      '' // 비품사진 자리
+    ]);
+    ws.getRow(rowIdx).height = 95;
+
+    // ✅ 비품사진만 삽입
+    if (r.imgDataUrl) {
+      const imgId = wb.addImage({
+        base64: r.imgDataUrl.split(',')[1],
+        extension: 'jpeg'
+      });
+      // 0-based 좌표: 비품사진은 6번째 컬럼 → col:5
+      ws.addImage(imgId, { tl:{ col:5, row:rowIdx-1 }, ext:{ width:180, height:120 } });
     }
 
-    const track = stream?.getVideoTracks?.()[0];
-    track && track.addEventListener?.('ended', ()=>{ cancel = true; });
+    rowIdx++;
   }
 
-  // CSV
-  function exportCSV(){
-    if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
-    const header=['스캔시각(KST)','비품번호','비품명','위치','사용자'];
-    const rows = records.map(r=>[ r.scanned_at_kst, r.id, r.name, r.loc, r.owner ]);
-    const escCSV=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-    const lines=[header.map(escCSV).join(','), ...rows.map(row=>row.map(escCSV).join(','))].join('\r\n');
-    const blob=new Blob(["\ufeff"+lines],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download='qr_scans_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
-  }
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
+    `qr_scans_${new Date().toISOString().slice(0,10)}.xlsx`
+  );
+};
 
-  // 초기화
-  function clearAll(){
-    if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
-    records=[]; saveRecords(); renderList();
-    tbody.innerHTML = '';
-    setMsg('초기화 완료');
-    stop();
-  }
-
-  // 페이지 숨김/이탈 시 정지
-  document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stop(); } });
-  window.addEventListener('beforeunload', ()=>{ try{ stop(); }catch(_){} });
-
-  // 버튼
-  startBtn.onclick = handleStartClick;
-  document.getElementById('exportBtn').onclick= exportCSV;
-  document.getElementById('clearBtn').onclick = clearAll;
 })();
 </script>
 </body>
