@@ -291,6 +291,12 @@
     try{ if(video.paused || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) await video.play(); }catch(_){}
     if(video.videoWidth && video.videoHeight){ overlay.width=video.videoWidth; overlay.height=video.videoHeight; }
   }
+  
+  // 🔧 QR 원문에 id=가 포함됐는지(세미콜론 구분 포함) 빠르게 체크
+function hasIdField(s){
+  return /(^|;)\s*id\s*=/.test(String(s));  // 대소문자 구분 필요하면 /i 플래그 추가 가능
+}
+
 
   // ====== 캔버스 미러 ======
   function startPhotoLive(){
@@ -391,7 +397,7 @@
         try {
           const r = await det.detect(video);
           const val = r && r[0]?.rawValue;
-          if (val && canAccept(val)) return onQrDetected(val);
+		  if (val && hasIdField(val) && canAccept(val)) return onQrDetected(val);
         } catch (_) {}
         requestAnimationFrame(loop);
       })();
@@ -410,7 +416,7 @@
         if (frame++ < WARMUP_FRAMES) return requestAnimationFrame(loop);
         const img = x.getImageData(0, 0, TARGET, TARGET);
         const qr  = jsQR(img.data, TARGET, TARGET, { inversionAttempts: 'attemptBoth' });
-        if (qr && qr.data && canAccept(qr.data)) return onQrDetected(qr.data);
+		if (qr && qr.data && hasIdField(qr.data) && canAccept(qr.data)) return onQrDetected(qr.data);
         requestAnimationFrame(loop);
       })();
     }
@@ -481,6 +487,18 @@
   // ====== QR 처리 ======
   async function onQrDetected(val){
     const parsed = parseQR(val);
+	
+	// ⛔ 비품번호(id) 누락 시 아예 진행 중단
+  if (!parsed.id) {
+    setMsg('인식된 QR에 비품번호(id=)가 없습니다. 올바른 QR을 다시 스캔하세요.');
+    // 스캔 상태 유지 및 촬영 패널/미러 숨김
+    MODE = 'scan';
+    showPreview(true);
+    photoLive.style.display = 'none';
+    hidePhotoPanel();
+    return;
+  }
+	
     renderTable(parsed);
 
     if (parsed.id && hasSameId(parsed.id)) {
