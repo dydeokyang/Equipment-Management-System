@@ -71,23 +71,40 @@
   .photo-step.pulse { animation: pulseBorder 1.2s ease-out 2; }
 
   /* 초록색 메인 촬영 버튼 */
+  /* 파란 메인 촬영 버튼 (라이트/다크 모두 잘 보이게) */
+button.btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb); /* 밝은 파랑 → 딥블루 */
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(37,99,235,.35);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+button.btn-primary:hover {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  box-shadow: 0 6px 16px rgba(37,99,235,.45);
+  transform: translateY(-2px);
+}
+button.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(37,99,235,.3);
+}
+button.btn-primary:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* 다크모드에서 더 선명하게 */
+@media (prefers-color-scheme: dark) {
   button.btn-primary {
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    color: #fff;
-    border: none;
-    font-weight: 600;
-    box-shadow: 0 4px 10px rgba(22,163,74,.25);
-    transition: transform .15s ease, box-shadow .15s ease;
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    box-shadow: 0 4px 14px rgba(59,130,246,.55);
   }
   button.btn-primary:hover {
-    background: linear-gradient(135deg, #4ade80, #22c55e);
-    box-shadow: 0 6px 14px rgba(22,163,74,.35);
-    transform: translateY(-2px);
+    background: linear-gradient(135deg, #93c5fd, #60a5fa);
   }
-  button.btn-primary:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 6px rgba(22,163,74,.2);
-  }
+}
+
 
   /* 커스텀 확인 모달 (confirm 차단 환경 대비) */
   #confirmMask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:9999}
@@ -103,7 +120,7 @@
 <h1>QR 스캐너</h1>
 
 <div class="row">
-  <button id="startQrBtn">QR 카메라 켜기</button>
+  <button id="startQrBtn" class="btn-primary">🎥 QR 카메라 ON</button>
   <button id="exportXlsxBtn">엑셀 내보내기</button>
   <button id="clearBtn">초기화</button>
   <label class="chk" title="체크 해제하면 사진 없이 즉시 저장합니다.">
@@ -135,7 +152,7 @@
         <div class="photo-chips" id="photoChips"></div>
         <div class="hint">비품 전체가 보이도록 카메라를 맞춘 뒤 <strong>비품 사진 촬영</strong>을 누르세요.</div>
         <div class="actions">
-          <button id="shotBtn" class="btn-primary">비품 사진 촬영</button>
+          <button id="shotBtn" class="btn-primary">비품 사진 촬영 📷</button>
           <button id="skipBtn" class="btn-ghost">사진 건너뛰기</button>
         </div>
       </div>
@@ -200,6 +217,9 @@
     const p=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(new Date());
     const g=t=>p.find(x=>x.type===t)?.value||''; return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
   }
+  
+  function scrollToTop(){ window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
 
   // ====== 로컬 스토리지 ======
   let records=load(); renderList();
@@ -256,27 +276,59 @@
 
   // ====== 캔버스 미러 ======
   function startPhotoLive(){
-    const vw=video.videoWidth||1280, vh=video.videoHeight||720;
-    photoLive.width=vw; photoLive.height=vh;
-    if(photoRAF) cancelAnimationFrame(photoRAF);
-    const draw=()=>{
-      if(MODE==='photo' && running && video.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
-        photoCtx.drawImage(video,0,0,photoLive.width,photoLive.height);
-      }
-      photoRAF=requestAnimationFrame(draw);
-    };
+  const vw = video.videoWidth || 1280;
+  const baseW = Math.min(960, vw); // 라이브 미러 해상도(너무 크게 안 잡기)
+  const baseH = Math.round(baseW * 3/4); // 4:3
+
+  photoLive.width = baseW;
+  photoLive.height = baseH;
+
+  if(photoRAF) cancelAnimationFrame(photoRAF);
+  const draw=()=>{
+    if(MODE==='photo' && running && video.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
+      drawVideoToCanvas4x3(photoCtx, video); // ← 4:3 크롭 적용
+    }
     photoRAF=requestAnimationFrame(draw);
-  }
+  };
+  photoRAF=requestAnimationFrame(draw);
+}
+
   function stopPhotoLive(){
     if(photoRAF) cancelAnimationFrame(photoRAF);
     photoRAF=null;
     photoCtx.clearRect(0,0,photoLive.width,photoLive.height);
   }
+  
+  // 4:3로 중앙 크롭해서 그리기
+function drawVideoToCanvas4x3(ctx, video){
+  const vw = video.videoWidth || 1280;
+  const vh = video.videoHeight || 720;
+  const dstW = ctx.canvas.width;
+  const dstH = ctx.canvas.height;
+  const targetAR = 4/3;
+  const srcAR = vw / vh;
+
+  let sx=0, sy=0, sw=vw, sh=vh;
+  if (srcAR > targetAR) {
+    // 비디오가 더 가로로 길다 → 좌우 크롭
+    sw = Math.round(vh * targetAR);
+    sx = Math.round((vw - sw) / 2);
+  } else if (srcAR < targetAR) {
+    // 비디오가 세로로 길다 → 상하 크롭
+    sh = Math.round(vw / targetAR);
+    sy = Math.round((vh - sh) / 2);
+  }
+
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, dstW, dstH);
+}
+
+
 
   // ====== 카메라 ======
   async function startCamera(){
     stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}, aspectRatio:{ideal: 4/3}       // ← 4:3 힌트
+	  },
       audio:false
     });
     video.srcObject=null; video.load(); video.srcObject=stream;
@@ -468,8 +520,8 @@
       hidePhotoPanel();          // 패널/하이라이트 숨김
       stopCamera();              // running=false, 미리보기도 숨김
       MODE = 'idle';
-      startQrBtn.textContent = 'QR 카메라 켜기';
-      setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 켜기]를 누르세요.');
+      startQrBtn.textContent = '🎥 QR 카메라 ON';
+      setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 ON]를 누르세요.');
 
       // 같은 코드 즉시 재감지 관련 쿨다운 초기화(선택)
       if (typeof accept !== 'undefined') accept = { v:null, at:0 };
@@ -483,6 +535,9 @@
     upsert({...parsed, imgDataUrl:null});
     hidePhotoPanel();
     setMsg('사진 없이 저장했습니다.');
+	
+	startQrBtn.textContent = '🎥 QR 카메라 ON';          // 
+	startQrBtn.classList.remove('on');                   // on 클래스를 쓰는 경우에만
     return;
   }
 
@@ -503,26 +558,48 @@
 
 
   // ====== 캡처 ======
-  async function capture(videoEl, maxW=640){
-    const vw=videoEl.videoWidth||640, vh=videoEl.videoHeight||480;
-    const s=Math.min(1, maxW/vw); const w=Math.round(vw*s), h=Math.round(vh*s);
-    const c=document.createElement('canvas'); c.width=w; c.height=h;
-    c.getContext('2d',{willReadFrequently:true}).drawImage(videoEl,0,0,w,h);
-    return c.toDataURL('image/jpeg',0.7);
+  async function capture(videoEl, maxW=960){
+  const vw = videoEl.videoWidth || 640;
+  const vh = videoEl.videoHeight || 480;
+  const aspect = 4/3;
+
+  // 소스에서 4:3 중앙 크롭 영역 계산
+  const srcAR = vw / vh;
+  let sx=0, sy=0, sw=vw, sh=vh;
+  if (srcAR > aspect) {           // 좌우 크롭
+    sw = Math.round(vh * aspect);
+    sx = Math.round((vw - sw) / 2);
+  } else if (srcAR < aspect) {    // 상하 크롭
+    sh = Math.round(vw / aspect);
+    sy = Math.round((vh - sh) / 2);
   }
+
+  // 출력 해상도(가로 기준 maxW)
+  const outW = Math.min(maxW, sw);
+  const outH = Math.round(outW / aspect);
+
+  const c = document.createElement('canvas');
+  c.width  = outW;
+  c.height = outH;
+  c.getContext('2d', {willReadFrequently:true})
+    .drawImage(videoEl, sx, sy, sw, sh, 0, 0, outW, outH);
+
+  return c.toDataURL('image/jpeg', 0.7);
+}
+
 
   // ====== 버튼 ======
   startQrBtn.onclick=async()=>{
     if(running){
       hidePhotoPanel(); stopCamera(); MODE='idle';
-      setMsg('카메라를 끔'); startQrBtn.textContent='QR 카메라 켜기'; return;
+      setMsg('카메라를 끔'); startQrBtn.textContent='🎥 QR 카메라 ON'; return;
     }
     try{
-      await startQrScan(); startQrBtn.textContent='QR 카메라 끄기';
+      await startQrScan(); startQrBtn.textContent='QR 카메라 OFF';
       if(isMobile) smoothScrollTo(previewHost,-10);
     }catch(e){
       setMsg('카메라 오류: '+(e.name||e)); hidePhotoPanel(); stopCamera(); MODE='idle';
-      startQrBtn.textContent='QR 카메라 켜기';
+      startQrBtn.textContent='🎥 QR 카메라 ON';
     }
   };
 
@@ -548,9 +625,10 @@ shotBtn.onclick = async () => {
   pendingParsed = null;
   photoStep.style.display = 'none';
   setMsg('저장 완료');
-  startQrBtn.textContent = 'QR 카메라 켜기';
+  startQrBtn.textContent = '🎥 QR 카메라 ON';
 
-  smoothScrollTo(listEl, -10);
+  scrollToTop();
+
 };
 
 // ✅ 사진 건너뛰기
@@ -572,9 +650,10 @@ skipBtn.onclick = async () => {
   pendingParsed = null;
   photoStep.style.display = 'none';
   setMsg('사진 없이 저장했습니다.');
-  startQrBtn.textContent = 'QR 카메라 켜기';
+  startQrBtn.textContent = '🎥 QR 카메라 ON';
 
-  smoothScrollTo(listEl, -10);
+  scrollToTop();
+
 };
 
 
