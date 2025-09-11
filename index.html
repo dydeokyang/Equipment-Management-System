@@ -97,7 +97,7 @@
 </style>
 </head>
 <body>
-<h1>QR 스캐너</h1>
+<h1>QR 스캐너v1</h1>
 
 <div class="row">
   <button id="startQrBtn" class="btn-primary">🎥 QR 카메라 ON</button>
@@ -227,7 +227,7 @@
   }
 
   // ===== 인식률 보강용 유틸 =====
-  const TARGET_STEPS = [640, 800, 1024];
+  const TARGET_STEPS = [640, 800, 1024, 1280];
   function tryDecode(video, opts, cache){
     const { width, full=false, centerCrop=false, boost=false } = opts;
     const { c, x } = cache || (()=>{ const c=document.createElement('canvas'); const x=c.getContext('2d',{willReadFrequently:true}); return {c,x}; })();
@@ -343,15 +343,16 @@
   // ===== 카메라 =====
   async function startCamera(){
     const constraints = {
-      video:{
-        facingMode:{ideal:'environment'},
-        width:{ideal:1920}, height:{ideal:1080},
-        frameRate:{ideal:30, max:60},
-        aspectRatio:{ideal:4/3},
-        advanced:[ { focusMode:'continuous' }, { resizeMode:'none' } ]
-      },
-      audio:false
-    };
+	  video:{
+		facingMode:{ ideal:'environment' },
+		width:{ ideal:1920, max:2560 },   // min 제거, ideal/max만
+		height:{ ideal:1080, max:1440 },  // min 제거
+		frameRate:{ ideal:30, max:60 },   // 60 희망(가능하면)
+		// aspectRatio는 빼거나 ideal만: aspectRatio:{ ideal: 4/3 }
+		advanced:[ { focusMode:'continuous' } ] // 지원 안 하면 무시
+	  },
+	  audio:false
+	};
     stream=await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject=null; video.load(); video.srcObject=stream;
 
@@ -359,10 +360,10 @@
     try{
       const track=stream.getVideoTracks()[0];
       const caps=track.getCapabilities?.()||{};
-      if('zoom' in caps){
-        const target=Math.min(caps.max, Math.max(caps.min, 2.0));
-        await track.applyConstraints({ advanced:[{ zoom: target }] });
-      }
+     if ('zoom' in caps) {
+		  const want = Math.min(caps.max, Math.max(caps.min, 2.8)); // 2.0 → 2.5~3.0 권장
+		  await track.applyConstraints({ advanced: [{ zoom: want    }] });
+		}
     }catch(_){}
 
     await new Promise(r=>{
