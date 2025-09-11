@@ -607,53 +607,37 @@
   // ===== 워치독 & 라이프사이클(멈춤 자동복구) =====
   const HEARTBEAT_MS=500, FREEZE_TICKS=6; // 3초 정지 시 재시작
   setInterval(async ()=>{
-    if(!running) return;
-    if(video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-    const t=video.currentTime||0;
-    if(t===lastVideoTime) stillTicks++; else stillTicks=0;
-    lastVideoTime=t;
-    if(stillTicks>=FREEZE_TICKS || !isStreamHealthy()){
-      await reviveCamera('프레임 정지/스트림 비정상 감지');
-    }
-  }, HEARTBEAT_MS);
+	  if (document.visibilityState !== 'visible') return; // ← 추가/유지
+	  if (!running) return;
+	  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
-  window.addEventListener('pageshow', async (e)=>{
-    if(MODE!=='idle'){
-      if(e.persisted || !isStreamHealthy()){
-        await reviveCamera('페이지 복귀');
-      }else{
-        try{ await video.play(); }catch(_){}
-      }
-    }
-  });
+	  const t = video.currentTime || 0;
+	  if (t === lastVideoTime) stillTicks++; else stillTicks = 0;
+	  lastVideoTime = t;
+	  if (stillTicks >= FREEZE_TICKS || !isStreamHealthy()) {
+		// 보이는 상태에서만 복구 시도
+		await reviveCamera('프레임 정지/스트림 비정상 감지');
+	  }
+	}, HEARTBEAT_MS);
 
-  document.addEventListener('visibilitychange', async ()=>{
-    if(document.visibilityState==='visible'){
-      if(MODE!=='idle' && (!running || !isStreamHealthy())){
-        await reviveCamera('앱/탭 복귀');
-      }else{
-        try{ await video.play(); }catch(_){}
-      }
-    }
-  });
-
+  document.addEventListener('visibilitychange', ()=>{
+	  if (document.visibilityState === 'hidden') {
+		// 보이지 않으면 바로 종료
+		hidePhotoPanel();
+		stopCamera();
+		MODE = 'idle';
+		startQrBtn.textContent = '🎥 QR 카메라 ON';
+		setMsg('백그라운드로 이동하여 카메라를 종료했습니다.');
+	  }
+	  // visible일 때는 자동으로 켜지지 않음(아무 것도 안 함)
+	});
+	 
   window.addEventListener('beforeunload', ()=>{
     try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
   });
 })();
 </script>
 
-<!--(예비) 커스텀 확인 모달 DOM -->
-<div id="confirmMask">
-  <div id="confirmBox">
-    <h3>확인</h3>
-    <p id="confirmMsg">메시지</p>
-    <div class="actions">
-      <button id="confirmCancel" class="btn">취소</button>
-      <button id="confirmOk" class="btn primary">확인</button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>
