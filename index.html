@@ -97,7 +97,7 @@
 </style>
 </head>
 <body>
-<h1>QR 스캐너</h1>
+<h1>QR 스캐너vv</h1>
 
 <div class="row">
   <button id="startQrBtn" class="btn-primary">🎥 QR 카메라 ON</button>
@@ -111,7 +111,8 @@
 
 <div id="previewHost">
   <div id="preview">
-    <video id="video" playsinline muted></video>
+    <!-- autoplay 추가 -->
+    <video id="video" playsinline muted autoplay></video>
     <canvas id="overlay"></canvas>
   </div>
 </div>
@@ -180,6 +181,10 @@
   let stream=null, running=false;
   let MODE='idle'; // idle | scan | photo
   let pendingParsed=null, photoRAF=null;
+
+  // 스캔 루프 핸들러 (추가)
+  let scanRAF = null;
+  function stopScanLoop(){ if (scanRAF) cancelAnimationFrame(scanRAF); scanRAF=null; }
 
   // 워치독(프레임 멈춤 감지)
   let lastVideoTime = 0, stillTicks = 0;
@@ -321,6 +326,7 @@
     try{
       setMsg((reason||'') + ' (카메라 재시작 중…)');
       stopPhotoLive();
+      stopScanLoop(); // 스캔 루프 정리
       try{ stream?.getTracks()?.forEach(t=>t.stop()); }catch(_){}
       stream=null; running=false;
 
@@ -334,6 +340,7 @@
       }else{
         showPreview(true);
         photoLive.style.display='none';
+        startScanLoop(); // 스캔 재개
       }
     }catch(e){
       setMsg('카메라 재시작 오류: '+(e.name||e));
@@ -345,17 +352,14 @@
     const constraints = {
       video:{
         facingMode:{ideal:'environment'},
-        width:{ideal:1920}, height:{ideal:1080},
-        frameRate:{ideal:30, max:60},
-        aspectRatio:{ideal:4/3},
-        advanced:[ { focusMode:'continuous' }, { resizeMode:'none' } ]
+        width:{ideal:1280}, height:{ideal:720}
       },
       audio:false
     };
     stream=await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject=null; video.load(); video.srcObject=stream;
 
-    // (지원 시) 기본 줌 소폭 적용 → 작은 QR 픽셀 확보
+    // (지원 시) 기본 줌 소폭 적용
     try{
       const track=stream.getVideoTracks()[0];
       const caps=track.getCapabilities?.()||{};
@@ -373,6 +377,7 @@
     running=true;
   }
   function stopCamera(){
+    stopScanLoop(); // 추가
     try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
     stream=null; running=false;
     try{ video.pause(); }catch(_){}
@@ -381,53 +386,45 @@
     hidePhotoPanel();
   }
 
-  // ===== QR 스캔 루프 =====
+  // ===== 스캔 루프 (jsQR만, 예외 보호) =====
   let accept={v:null,at:0};
   function canAccept(v){ const now=performance.now(); if(v && accept.v===v && now-accept.at<2000) return false; accept={v,at:now}; return true; }
 
-  async function startQrScan(){
-    MODE='scan'; setMsg('QR을 화면 중앙에 크게 맞춰주세요…'); hidePhotoPanel();
-    if(preview.parentNode!==previewHost) previewHost.appendChild(preview);
+  function startScanLoop(){
+    stopScanLoop();
+    accept = { v:null, at:0 };
+    const cache={ c:document.createElement('canvas'), x:null };
+    cache.x=cache.c.getContext('2d',{willReadFrequently:true});
+    let frame=0;
 
-    if(!running){ await startCamera(); await ensureVisible(); } else { await ensureVisible(); }
-
-    showPreview(true); photoLive.style.display='none'; overlay.style.display='none';
-    accept={v:null,at:0};
-
-    let det=null;
-    try{ if('BarcodeDetector' in window && typeof BarcodeDetector==='function'){ det=new BarcodeDetector({formats:['qr_code']}); } }catch(_){ det=null; }
-
-    if(det){
-      (async function loop(){
-        if(MODE!=='scan' || !running) return;
-        try{
-          const r=await det.detect(video); const val=r&&r[0]?.rawValue;
-          if(val && hasIdField(val) && canAccept(val)) return onQrDetected(val);
-        }catch(_){}
-        requestAnimationFrame(loop);
-      })();
-    }else{
-      const cache={ c:document.createElement('canvas'), x:null };
-      cache.x=cache.c.getContext('2d',{willReadFrequently:true});
-      let frame=0;
-      (function loop(){
-        if(MODE!=='scan' || !running) return;
-        if(video.readyState!==video.HAVE_ENOUGH_DATA) return requestAnimationFrame(loop);
-        if(frame++<8) return requestAnimationFrame(loop); // 워밍업 더 확보
+    const loop=()=>{
+      if(MODE!=='scan' || !running){ scanRAF=null; return; }
+      try{
+        if(video.readyState!==video.HAVE_ENOUGH_DATA){ scanRAF=requestAnimationFrame(loop); return; }
+        if(frame++<8){ scanRAF=requestAnimationFrame(loop); return; } // 워밍업
 
         let qr=null;
-
-        // ① 풀프레임(4:3) 시도
         for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:true},cache); if(qr&&qr.data) break; }
-        // ② 중앙 정사각 확대
         if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true},cache); if(qr&&qr.data) break; } }
-        // ③ 대비↑ + 중앙 확대
         if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true,boost:true},cache); if(qr&&qr.data) break; } }
 
-        if(qr && qr.data && hasIdField(qr.data) && canAccept(qr.data)) return onQrDetected(qr.data);
-        requestAnimationFrame(loop);
-      })();
-    }
+        if(qr && qr.data){
+          const raw = qr.data;
+          if (hasIdField(raw) && canAccept(raw)) return onQrDetected(raw);
+        }
+      }catch(e){
+        console.warn('decode error (keep looping)', e);
+      }
+      scanRAF=requestAnimationFrame(loop);
+    };
+    scanRAF=requestAnimationFrame(loop);
+  }
+
+  // ===== 안전 디코딩 =====
+  function safeDecode(s){
+    const t = String(s??'').replace(/\+/g, '%20');
+    if (!/%[0-9A-Fa-f]{2}/.test(t)) return String(s??'');
+    try{ return decodeURIComponent(t); }catch(_){ return String(s??''); }
   }
 
   // ===== 파서 =====
@@ -440,7 +437,7 @@
       if(i<0) continue;
       const key=p.slice(0,i).trim().toLowerCase();
       let val=p.slice(i+1).trim();
-      try{ val=decodeURIComponent(val); }catch(_){}
+      val = safeDecode(val); // ← 안전 디코딩
       if(key==='id') out.id=val;
       else if(key==='name') out.name=val;
       else if(key==='loc'||key==='location') out.loc=val;
@@ -456,7 +453,7 @@
     for(const p of parts){
       const i=p.indexOf('='); if(i<0) continue;
       const k=p.slice(0,i).trim().toLowerCase(); if(k!=='id') continue;
-      let v=p.slice(i+1).trim(); try{ v=decodeURIComponent(v); }catch(_){}
+      let v=p.slice(i+1).trim(); v = safeDecode(v);
       return v;
     }
     return '';
@@ -496,6 +493,7 @@
     if(!parsed.id){
       setMsg('인식된 QR에 비품번호(id=)가 없습니다. 올바른 QR을 다시 스캔하세요.');
       MODE='scan'; showPreview(true); photoLive.style.display='none'; hidePhotoPanel();
+      // 스캔 루프는 유지됨
       return;
     }
 
@@ -507,7 +505,6 @@
         stopPhotoLive(); hidePhotoPanel(); stopCamera(); MODE='idle';
         startQrBtn.textContent='🎥 QR 카메라 ON';
         setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 ON]을 누르세요.');
-        accept={v:null,at:0};
         return;
       }
     }
@@ -604,40 +601,45 @@
     saveAs(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `qr_scans_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
-  // ===== 워치독 & 라이프사이클(멈춤 자동복구) =====
+  // ===== 스캔 시작/워치독 =====
+  async function startQrScan(){
+    MODE='scan'; setMsg('QR을 화면 중앙에 크게 맞춰주세요…'); hidePhotoPanel();
+    if(preview.parentNode!==previewHost) previewHost.appendChild(preview);
+
+    if(!running){ await startCamera(); await ensureVisible(); } else { await ensureVisible(); }
+
+    showPreview(true); photoLive.style.display='none'; overlay.style.display='none';
+    startScanLoop(); // 스캔 루프 시작
+  }
+
   const HEARTBEAT_MS=500, FREEZE_TICKS=6; // 3초 정지 시 재시작
   setInterval(async ()=>{
-	  if (document.visibilityState !== 'visible') return; // ← 추가/유지
-	  if (!running) return;
-	  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    if (document.visibilityState !== 'visible') return;
+    if (!running) return;
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
-	  const t = video.currentTime || 0;
-	  if (t === lastVideoTime) stillTicks++; else stillTicks = 0;
-	  lastVideoTime = t;
-	  if (stillTicks >= FREEZE_TICKS || !isStreamHealthy()) {
-		// 보이는 상태에서만 복구 시도
-		await reviveCamera('프레임 정지/스트림 비정상 감지');
-	  }
-	}, HEARTBEAT_MS);
+    const t = video.currentTime || 0;
+    if (t === lastVideoTime) stillTicks++; else stillTicks = 0;
+    lastVideoTime = t;
+    if (stillTicks >= FREEZE_TICKS || !isStreamHealthy()) {
+      await reviveCamera('프레임 정지/스트림 비정상 감지');
+    }
+  }, HEARTBEAT_MS);
 
   document.addEventListener('visibilitychange', ()=>{
-	  if (document.visibilityState === 'hidden') {
-		// 보이지 않으면 바로 종료
-		hidePhotoPanel();
-		stopCamera();
-		MODE = 'idle';
-		startQrBtn.textContent = '🎥 QR 카메라 ON';
-		setMsg('백그라운드로 이동하여 카메라를 종료했습니다.');
-	  }
-	  // visible일 때는 자동으로 켜지지 않음(아무 것도 안 함)
-	});
-	 
+    if (document.visibilityState === 'hidden') {
+      hidePhotoPanel();
+      stopCamera();
+      MODE = 'idle';
+      startQrBtn.textContent = '🎥 QR 카메라 ON';
+      setMsg('백그라운드로 이동하여 카메라를 종료했습니다.');
+    }
+  });
+
   window.addEventListener('beforeunload', ()=>{
     try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
   });
 })();
 </script>
-
-
 </body>
 </html>
