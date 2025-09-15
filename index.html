@@ -3,54 +3,431 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>디와이덕양 비품관리 (ZXing 단독)</title>
+<title>디와이덕양 비품관리</title>
 <style>
-  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;max-width:980px;margin:28px auto;padding:0 16px;background:#fff;color:#16181b}
+  :root{
+    --bg:#fff; --fg:#16181b; --muted:#667085; --border:#e6e8eb; --shadow:0 4px 14px rgba(0,0,0,.08);
+    --chip-id:#eef2ff; --chip-id-text:#1d4ed8; --chip-name:#ecfdf5; --chip-name-text:#065f46;
+    --chip-loc:#fff7ed; --chip-loc-text:#9a3412; --chip-owner:#fef2f2; --chip-owner-text:#b91c1c;
+    --focus:#0ea5e9; --okbg:#ecfdf5; --ok:#065f46;
+  }
+  body{font-family:system-ui,malgun gothic,apple sd gothic neo,arial;background:var(--bg);color:var(--fg);max-width:980px;margin:28px auto;padding:0 16px}
   h1{font-size:22px;margin:14px 0}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
-  button{font-size:16px;padding:10px 16px;border:1px solid #e6e8eb;border-radius:10px;background:#fff;cursor:pointer}
+  button{font-size:16px;padding:10px 16px;border:1px solid var(--border);border-radius:10px;background:#fff;cursor:pointer}
   button:hover{border-color:#c9ced6}
+  label.chk{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:#fff}
+  label.chk input{width:18px;height:18px}
+  .count{margin-left:auto;color:#333;font-size:14px}
   #msg{margin:8px 2px;color:#475569}
-  #preview{position:relative;width:100%;max-width:560px;aspect-ratio:1/1;overflow:hidden;border:1px solid #e6e8eb;border-radius:12px;margin:10px 0}
-  #video{width:100%;height:100%;object-fit:cover;border-radius:12px}
-  table{border-collapse:separate;border-spacing:0;width:100%;margin-top:10px}
-  th,td{padding:10px;border-bottom:1px solid #e6e8eb;text-align:left}
-  th{background:#f9fafb;width:100px}
+
+  /* 미리보기 공용 */
+  #previewHost{margin:10px 0}
+  #preview{position:relative;width:100%;max-width:560px;aspect-ratio:1/1;overflow:hidden;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);display:none;background:transparent}
+  #video,#overlay{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:cover;object-position:center;pointer-events:none;background:transparent}
+
+  .card{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin:16px 0}
+  .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
+  table{border-collapse:separate;border-spacing:0;width:100%}
+  th,td{padding:12px;border-bottom:1px solid var(--border);text-align:left;word-break:break-all}
+  tbody tr:nth-child(even){background:#fcfdff}
+  tbody tr:last-child td, tbody tr:last-child th{border-bottom:0}
+  th.key{font-weight:600;background:transparent;padding:6px 0}
+  .chip{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px}
+  .chip.id{background:var(--chip-id);color:var(--chip-id-text)}
+  .chip.name{background:var(--chip-name);color:var(--chip-name-text)}
+  .chip.loc{background:var(--chip-loc);color:var(--chip-loc-text)}
+  .chip.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
+
+  /* 비품 촬영 패널 */
+  .photo-step{display:none;margin-top:14px;border:2px dashed var(--focus);border-radius:12px;padding:12px}
+  .photo-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;background:var(--okbg);color:var(--ok);border:1px solid #cce7dd;padding:8px 10px;border-radius:8px;font-weight:600}
+  .photo-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;align-items:start}
+  @media (max-width:900px){ .photo-grid{grid-template-columns:1fr} }
+  .photo-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .photo-slot{position:relative;width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:2px solid var(--focus);background:transparent}
+  .photo-slot #photoLive{display:block;width:100%;height:100%}
+  .hint{font-size:13px;color:#475569;margin-top:6px}
+  .actions{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+
+  .list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:760px){ .list{grid-template-columns:1fr} }
+  .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;box-shadow:var(--shadow)}
+  .item .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .item .time{font-size:13px;color:#334155;background:#f1f5f9;border-radius:6px;padding:4px 8px}
+  .badges{display:flex;flex-wrap:wrap;gap:6px}
+  .badge{font-size:12px;border-radius:999px;padding:3px 8px}
+  .badge.id{background:var(--chip-id);color:var(--chip-id-text)}
+  .badge.name{background:var(--chip-name);color:var(--chip-name-text)}
+  .badge.loc{background:var(--chip-loc);color:var(--chip-loc-text)}
+  .badge.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
+
+  @keyframes pulseBorder { 0%{box-shadow:0 0 0 0 rgba(14,165,233,.45)} 70%{box-shadow:0 0 0 12px rgba(14,165,233,0)} 100%{box-shadow:0 0 0 0 rgba(14,165,233,0)} }
+  .photo-step.pulse { animation: pulseBorder 1.2s ease-out 2; }
+
+  /* 파란 메인 버튼 */
+  button.btn-primary{
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    color:#fff;border:none;font-weight:700;
+    box-shadow:0 4px 12px rgba(37,99,235,.35);
+    transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  }
+  button.btn-primary:hover{ background:linear-gradient(135deg,#60a5fa,#3b82f6); box-shadow:0 6px 16px rgba(37,99,235,.45); transform:translateY(-2px) }
+  button.btn-primary:active{ transform:translateY(0); box-shadow:0 2px 8px rgba(37,99,235,.3) }
+  button.btn-primary:focus-visible{ outline:2px solid #93c5fd; outline-offset:2px }
+  @media (prefers-color-scheme: dark){
+    button.btn-primary{ background:linear-gradient(135deg,#60a5fa,#3b82f6); box-shadow:0 4px 14px rgba(59,130,246,.55) }
+    button.btn-primary:hover{ background:linear-gradient(135deg,#93c5fd,#60a5fa) }
+  }
+
+  /* 촬영/건너뛰기 버튼: 모바일 한 줄 유지 */
+  .photo-grid .actions{ display:flex; gap:8px; flex-wrap:nowrap; align-items:stretch }
+  .photo-grid .actions button{ flex:1 1 0; min-width:0; white-space:nowrap }
+  @media (max-width:380px){ .photo-grid .actions{gap:6px} .photo-grid .actions button{font-size:14px;padding:9px 10px} }
+  @media (max-width:320px){ .photo-grid .actions{ overflow-x:auto } }
+
+  /* 커스텀 확인 모달 (예비) */
+  #confirmMask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:9999}
+  #confirmBox{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);max-width:420px;width:92%;padding:16px}
+  #confirmBox h3{margin:0 0 8px 0;font-size:16px}
+  #confirmBox p{margin:0 0 14px 0;color:#475569;white-space:pre-line}
+  #confirmBox .actions{display:flex;gap:8px;justify-content:flex-end}
+  #confirmBox .btn{padding:10px 14px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
+  #confirmBox .btn.primary{background:#16a34a;color:#fff;border:none}
 </style>
 </head>
 <body>
-<h1>QR 스캐너 (ZXing 단독)</h1>
+<h1>QR 스캐너</h1>
 
 <div class="row">
-  <button id="startQrBtn">🎥 QR 카메라 ON</button>
-  <button id="stopQrBtn">카메라 OFF</button>
+  <button id="startQrBtn" class="btn-primary">🎥 QR 카메라 ON</button>
+  <button id="exportXlsxBtn">엑셀 내보내기</button>
+  <button id="clearBtn">초기화</button>
+  <label class="chk" title="체크 해제하면 사진 없이 즉시 저장합니다.">
+    <input id="requirePhotoChk" type="checkbox" checked> 비품 사진 촬영
+  </label>
+  <span class="count" id="count">저장 0건</span>
 </div>
 
-<div id="preview">
-  <video id="video" playsinline muted></video>
+<div id="previewHost">
+  <div id="preview">
+    <!-- autoplay 추가 -->
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+  </div>
 </div>
 
-<p id="msg">QR을 화면 중앙에 맞춰주세요.</p>
+<p id="msg">QR을 화면 중앙에 크게 맞춰주세요.</p>
 
-<h2>비품정보</h2>
-<table id="tbl"><tbody></tbody></table>
+<div class="card" id="infoCard">
+  <h2>비품정보</h2>
+  <div class="subtitle">스캔 즉시 아래 표와 비품 촬영 패널에 반영됩니다.</div>
+  <table id="tbl"><tbody></tbody></table>
 
-<!-- ZXing 라이브러리 -->
-<script src="libs/zxing.min.js"></script>
-<script>
-  window.ZXing = window.ZXing || window.ZXingBrowser;  // ★ 보정
-</script>
+  <div id="photoStep" class="photo-step">
+    <div class="photo-head">QR 정상 인식됨 → 지금 비품 사진을 촬영하세요(처리용량 초과시 저장이 안될수 있습니다. 저장후 초기화를 하세요)</div>
+    <div class="photo-grid">
+      <div>
+        <div class="photo-chips" id="photoChips"></div>
+        <div class="hint">비품 전체가 보이도록 카메라를 맞춘 뒤 <strong>비품 사진 촬영</strong>을 누르세요.</div>
+        <div class="actions">
+          <button id="shotBtn" class="btn-primary">비품 사진 촬영 📷</button>
+          <button id="skipBtn" class="btn-ghost">사진 건너뛰기</button>
+        </div>
+      </div>
+      <div class="photo-slot">
+        <canvas id="photoLive"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>최근 저장 목록</h2>
+  <div class="subtitle">같은 항목을 다시 스캔해도 중복 저장하지 않고, 시간만 갱신합니다.</div>
+  <div id="list" class="list"></div>
+</div>
+
+<!-- 라이브러리 -->
+<script src="libs/jsQR.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+<script src="libs/FileSaver.min.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+<script src="libs/exceljs.min.js?v={{ site.time | date: '%Y%m%d%H%M%S' }}"></script>
+
 <script>
 (()=> {
+  // ===== 요소 =====
+  const startQrBtn = document.getElementById('startQrBtn');
+  const exportXlsxBtn = document.getElementById('exportXlsxBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const requirePhotoChk = document.getElementById('requirePhotoChk');
+  const previewHost = document.getElementById('previewHost');
+  const preview = document.getElementById('preview');
   const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const ox = overlay.getContext('2d');
   const msg = document.getElementById('msg');
   const tbody = document.querySelector('#tbl tbody');
+  const photoStep = document.getElementById('photoStep');
+  const photoChips = document.getElementById('photoChips');
+  const photoLive = document.getElementById('photoLive');
+  const photoCtx = photoLive.getContext('2d',{willReadFrequently:true});
+  const shotBtn = document.getElementById('shotBtn');
+  const skipBtn = document.getElementById('skipBtn');
+  const listEl = document.getElementById('list');
+  const countEl = document.getElementById('count');
 
-  let stream = null;
-  let zxingReader = null;
-  let lastZXingVal = '';
+  // ===== 상태 =====
+  const DEBUG=false, TARGET=640, WARMUP_FRAMES=6;
+  let stream=null, running=false;
+  let MODE='idle'; // idle | scan | photo
+  let pendingParsed=null, photoRAF=null;
 
-  // QR 문자열 파싱
+  // 스캔 루프 핸들러 (추가)
+  let scanRAF = null;
+  function stopScanLoop(){ if (scanRAF) cancelAnimationFrame(scanRAF); scanRAF=null; }
+
+  // 워치독(프레임 멈춤 감지)
+  let lastVideoTime = 0, stillTicks = 0;
+
+  // ===== 유틸 =====
+  const isMobile = (()=>{try{
+    return window.matchMedia?.('(pointer:coarse)')?.matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  }catch(_){return false;}})();
+  function smoothScrollTo(el, offset=0){
+    if(!el) return; const r=el.getBoundingClientRect();
+    window.scrollTo({top: window.pageYOffset + r.top + offset, behavior:'smooth'});
+  }
+  function setMsg(t){ msg.textContent=t||''; }
+  function esc(s){ return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function nowKST(){
+    const p=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(new Date());
+    const g=t=>p.find(x=>x.type===t)?.value||''; return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
+  }
+  function scrollToTop(){ window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+  // ===== 로컬 스토리지 =====
+  let records=load(); renderList();
+  function load(){ try{ return JSON.parse(localStorage.getItem('qr_records')||'[]'); }catch(_){ return []; } }
+  function save(){ localStorage.setItem('qr_records', JSON.stringify(records)); }
+  function dedupeKey(o){ const id=(o.id||'').trim(); return id ? 'ID:'+id.toLowerCase() : 'RAW:'+String(o.raw||''); }
+  function upsert(o){
+    const k=dedupeKey(o), t=nowKST(); const i=records.findIndex(r=>r._key===k);
+    if(i>=0) records[i]={...records[i], ...o, scanned_at_kst:t};
+    else records.push({_key:k, ...o, scanned_at_kst:t});
+    save(); renderList();
+  }
+  function renderList(){
+    countEl.textContent=`저장 ${records.length}건`; listEl.innerHTML='';
+    records.slice().reverse().forEach(r=>{
+      const d=document.createElement('div'); d.className='item';
+      d.innerHTML=`<div class="head"><div class="time mono">${r.scanned_at_kst}</div></div>
+      <div class="badges">
+        <span class="badge id">비품번호: ${esc(r.id)}</span>
+        <span class="badge name">비품명: ${esc(r.name)}</span>
+        <span class="badge loc">위치: ${esc(r.loc)}</span>
+        <span class="badge owner">사용자: ${esc(r.owner)}</span>
+      </div>`;
+      listEl.appendChild(d);
+    });
+  }
+
+  // ===== 인식률 보강용 유틸 =====
+  const TARGET_STEPS = [640, 800, 1024];
+  function tryDecode(video, opts, cache){
+    const { width, full=false, centerCrop=false, boost=false } = opts;
+    const { c, x } = cache || (()=>{ const c=document.createElement('canvas'); const x=c.getContext('2d',{willReadFrequently:true}); return {c,x}; })();
+    const vw=video.videoWidth||640, vh=video.videoHeight||480;
+    let sx=0, sy=0, sw=vw, sh=vh;
+
+    if(!full){
+      const s=Math.min(vw,vh); sx=(vw-s)/2; sy=(vh-s)/2; sw=sh=s;
+      if(centerCrop){ const k=0.72; sx+=s*(1-k)/2; sy+=s*(1-k)/2; sw=sh=s*k; }
+      c.width=width; c.height=width;
+    }else{
+      const outW=width, outH=Math.round(outW*vh/vw);
+      c.width=outW; c.height=outH;
+    }
+
+    x.imageSmoothingEnabled=false;
+    x.filter = boost ? 'contrast(140%) brightness(112%)' : 'none';
+    x.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    const img=x.getImageData(0,0,c.width,c.height);
+    return jsQR(img.data, c.width, c.height, { inversionAttempts:'attemptBoth' });
+  }
+
+  // 문자열에 id= 키가 있는지 빠르게 체크
+  function hasIdField(s){ return /(^|;)\s*id\s*=/.test(String(s)); }
+
+  // ===== 촬영 패널 제어 =====
+  function hidePhotoPanel(){
+    photoStep.style.display='none';
+    photoStep.classList.remove('pulse');
+    pendingParsed=null;
+    stopPhotoLive();
+  }
+
+  // ===== 체크박스 기억 =====
+  const savedRequirePhoto = localStorage.getItem('require_photo');
+  if (savedRequirePhoto !== null) requirePhotoChk.checked = savedRequirePhoto === '1';
+  requirePhotoChk.addEventListener('change', () => {
+    localStorage.setItem('require_photo', requirePhotoChk.checked ? '1' : '0');
+  });
+
+  // ===== 미리보기 =====
+  function showPreview(b){
+    preview.style.display=b?'block':'none';
+    video.style.display=b?'block':'none';
+    overlay.style.display=(b && DEBUG)?'block':'none';
+  }
+  async function ensureVisible(){
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    try{ if(video.paused || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) await video.play(); }catch(_){}
+    if(video.videoWidth && video.videoHeight){ overlay.width=video.videoWidth; overlay.height=video.videoHeight; }
+  }
+
+  // ===== 캔버스 미러(촬영 안내) =====
+  function startPhotoLive(){
+    const vw = video.videoWidth || 1280;
+    const baseW = Math.min(960, vw);
+    const baseH = Math.round(baseW * 3/4);
+    photoLive.width = baseW; photoLive.height = baseH;
+
+    if(photoRAF) cancelAnimationFrame(photoRAF);
+    const draw=()=>{
+      if(MODE==='photo' && running && video.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
+        drawVideoToCanvas4x3(photoCtx, video);
+      }
+      photoRAF=requestAnimationFrame(draw);
+    };
+    photoRAF=requestAnimationFrame(draw);
+  }
+  function stopPhotoLive(){
+    if(photoRAF) cancelAnimationFrame(photoRAF);
+    photoRAF=null;
+    photoCtx.clearRect(0,0,photoLive.width,photoLive.height);
+  }
+  function drawVideoToCanvas4x3(ctx, video){
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
+    const dstW = ctx.canvas.width, dstH = ctx.canvas.height;
+    const targetAR = 4/3, srcAR = vw/vh;
+    let sx=0, sy=0, sw=vw, sh=vh;
+    if (srcAR > targetAR){ sw=Math.round(vh*targetAR); sx=Math.round((vw-sw)/2); }
+    else if (srcAR < targetAR){ sh=Math.round(vw/targetAR); sy=Math.round((vh-sh)/2); }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, dstW, dstH);
+  }
+
+  // ===== 스트림 헬스/재시작 =====
+  function isStreamHealthy(){
+    const track = stream?.getVideoTracks?.()[0];
+    return !!(track && track.readyState === 'live' && track.enabled !== false);
+  }
+  async function reviveCamera(reason){
+    try{
+      setMsg((reason||'') + ' (카메라 재시작 중…)');
+      stopPhotoLive();
+      stopScanLoop(); // 스캔 루프 정리
+      try{ stream?.getTracks()?.forEach(t=>t.stop()); }catch(_){}
+      stream=null; running=false;
+
+      await startCamera();
+      await ensureVisible();
+
+      if (MODE === 'photo'){
+        showPreview(false);
+        photoLive.style.display='block';
+        startPhotoLive();
+      }else{
+        showPreview(true);
+        photoLive.style.display='none';
+        startScanLoop(); // 스캔 재개
+      }
+    }catch(e){
+      setMsg('카메라 재시작 오류: '+(e.name||e));
+    }
+  }
+
+  // ===== 카메라 =====
+  async function startCamera(){
+    const constraints = {
+      video:{
+        facingMode:{ideal:'environment'},
+        width:{ideal:1280}, height:{ideal:720}
+      },
+      audio:false
+    };
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject=null; video.load(); video.srcObject=stream;
+
+    // (지원 시) 기본 줌 소폭 적용
+    try{
+      const track=stream.getVideoTracks()[0];
+      const caps=track.getCapabilities?.()||{};
+      if('zoom' in caps){
+        const target=Math.min(caps.max, Math.max(caps.min, 2.0));
+        await track.applyConstraints({ advanced:[{ zoom: target }] });
+      }
+    }catch(_){}
+
+    await new Promise(r=>{
+      if(video.readyState>=HTMLMediaElement.HAVE_ENOUGH_DATA) return r();
+      const ok=()=>r(); video.addEventListener('loadeddata',ok,{once:true}); video.addEventListener('canplay',ok,{once:true});
+    });
+    await video.play().catch(()=>{});
+    running=true;
+  }
+  function stopCamera(){
+    stopScanLoop(); // 추가
+    try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
+    stream=null; running=false;
+    try{ video.pause(); }catch(_){}
+    video.srcObject=null; video.load();
+    showPreview(false);
+    hidePhotoPanel();
+  }
+
+  // ===== 스캔 루프 (jsQR만, 예외 보호) =====
+  let accept={v:null,at:0};
+  function canAccept(v){ const now=performance.now(); if(v && accept.v===v && now-accept.at<2000) return false; accept={v,at:now}; return true; }
+
+  function startScanLoop(){
+    stopScanLoop();
+    accept = { v:null, at:0 };
+    const cache={ c:document.createElement('canvas'), x:null };
+    cache.x=cache.c.getContext('2d',{willReadFrequently:true});
+    let frame=0;
+
+    const loop=()=>{
+      if(MODE!=='scan' || !running){ scanRAF=null; return; }
+      try{
+        if(video.readyState!==video.HAVE_ENOUGH_DATA){ scanRAF=requestAnimationFrame(loop); return; }
+        if(frame++<8){ scanRAF=requestAnimationFrame(loop); return; } // 워밍업
+
+        let qr=null;
+        for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:true},cache); if(qr&&qr.data) break; }
+        if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true},cache); if(qr&&qr.data) break; } }
+        if(!qr){ for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:false,centerCrop:true,boost:true},cache); if(qr&&qr.data) break; } }
+
+        if(qr && qr.data){
+          const raw = qr.data;
+          if (hasIdField(raw) && canAccept(raw)) return onQrDetected(raw);
+        }
+      }catch(e){
+        console.warn('decode error (keep looping)', e);
+      }
+      scanRAF=requestAnimationFrame(loop);
+    };
+    scanRAF=requestAnimationFrame(loop);
+  }
+
+  // ===== 안전 디코딩 =====
+  function safeDecode(s){
+    const t = String(s??'').replace(/\+/g, '%20');
+    if (!/%[0-9A-Fa-f]{2}/.test(t)) return String(s??'');
+    try{ return decodeURIComponent(t); }catch(_){ return String(s??''); }
+  }
+
+  // ===== 파서 =====
   function parseQR(text){
     const raw=String(text||'').trim();
     const out={id:'',name:'',loc:'',owner:'',raw};
@@ -60,7 +437,7 @@
       if(i<0) continue;
       const key=p.slice(0,i).trim().toLowerCase();
       let val=p.slice(i+1).trim();
-      try{ val = decodeURIComponent(val); }catch(_){}
+      val = safeDecode(val); // ← 안전 디코딩
       if(key==='id') out.id=val;
       else if(key==='name') out.name=val;
       else if(key==='loc'||key==='location') out.loc=val;
@@ -69,69 +446,199 @@
     return out;
   }
 
-  // 테이블에 표시
-  function renderTable(o){
-    const rows=[['비품번호','id'],['비품명','name'],['위치','loc'],['사용자','owner']];
-    tbody.innerHTML='';
-    rows.forEach(([label,key])=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML=`<th>${label}</th><td>${o[key]||''}</td>`;
-      tbody.appendChild(tr);
+  // raw에서도 id 추출해 비교
+  function extractIdFromRaw(raw){
+    const txt=String(raw||'');
+    const parts=txt.split(/[;]+/).map(s=>s.trim()).filter(Boolean);
+    for(const p of parts){
+      const i=p.indexOf('='); if(i<0) continue;
+      const k=p.slice(0,i).trim().toLowerCase(); if(k!=='id') continue;
+      let v=p.slice(i+1).trim(); v = safeDecode(v);
+      return v;
+    }
+    return '';
+  }
+  function hasSameId(id){
+    const target=String(id||'').trim().toLowerCase(); if(!target) return false;
+    return records.some(r=>{
+      const rid=String(r.id||'').trim().toLowerCase();
+      const rraw=String(extractIdFromRaw(r.raw)||'').trim().toLowerCase();
+      return (rid && rid===target) || (rraw && rraw===target);
     });
   }
 
-  // ZXing 시작
-  async function startZXing(){
-    if(!window.ZXing || !ZXing.BrowserMultiFormatReader){
-      msg.textContent = '❌ ZXing 로드 실패';
+  // ===== 렌더 =====
+  function renderTable(o){
+    const rows=[['비품번호','id','id'],['비품명','name','name'],['위치','loc','loc'],['사용자','owner','owner']];
+    tbody.innerHTML='';
+    rows.forEach(([label,key,cls])=>{
+      const tr=document.createElement('tr');
+      const th=document.createElement('th'); th.className='key'; th.innerHTML=`<span class="chip ${cls}">${label}</span>`;
+      const td=document.createElement('td'); td.textContent=o[key]??'';
+      tr.append(th,td); tbody.appendChild(tr);
+    });
+  }
+  function renderChips(o){
+    photoChips.innerHTML=`<span class="chip id">비품번호: ${esc(o.id)}</span>
+    <span class="chip name">비품명: ${esc(o.name)}</span>
+    <span class="chip loc">위치: ${esc(o.loc)}</span>
+    <span class="chip owner">사용자: ${esc(o.owner)}</span>`;
+  }
+
+  // ===== QR 처리 =====
+  async function onQrDetected(val){
+    const parsed=parseQR(val);
+
+    // id 없으면 진행 중단
+    if(!parsed.id){
+      setMsg('인식된 QR에 비품번호(id=)가 없습니다. 올바른 QR을 다시 스캔하세요.');
+      MODE='scan'; showPreview(true); photoLive.style.display='none'; hidePhotoPanel();
+      // 스캔 루프는 유지됨
       return;
     }
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }, audio:false });
-      video.srcObject = stream;
-      await video.play();
 
-      zxingReader = new ZXing.BrowserMultiFormatReader();
-      await zxingReader.decodeFromStream(stream, video, (result, err)=>{
-        if(!result || !result.getText) return;
-        const raw = result.getText();
+    renderTable(parsed);
 
-        if (raw === lastZXingVal) return; // 같은 값 무시
-        lastZXingVal = raw;
-
-        msg.textContent = `✅ ZXING 인식됨: ${raw}`;
-        const parsed = parseQR(raw);
-        renderTable(parsed);
-      });
-    } catch(e){
-      msg.textContent = '카메라 오류: '+e;
+    if(parsed.id && hasSameId(parsed.id)){
+      const ok=confirm('최근 저장 목록에 같은 비품번호가 있습니다.\n계속 진행하시겠습니까?');
+      if(!ok){
+        stopPhotoLive(); hidePhotoPanel(); stopCamera(); MODE='idle';
+        startQrBtn.textContent='🎥 QR 카메라 ON';
+        setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 ON]을 누르세요.');
+        return;
+      }
     }
+
+    if(!requirePhotoChk.checked){
+      stopCamera(); MODE='idle';
+      upsert({...parsed, imgDataUrl:null});
+      hidePhotoPanel();
+      setMsg('사진 없이 저장했습니다.');
+      startQrBtn.textContent='🎥 QR 카메라 ON';
+      return;
+    }
+
+    pendingParsed=parsed;
+    MODE='photo';
+    renderChips(parsed);
+    photoStep.style.display='block';
+    showPreview(false);
+    photoLive.style.display='block';
+    await ensureVisible();
+    startPhotoLive();
+    setMsg('비품을 프레임에 맞춰 [비품 사진 촬영]을 눌러주세요.');
+    smoothScrollTo(photoStep,-8);
+    photoStep.classList.add('pulse');
+    setTimeout(()=>photoStep.classList.remove('pulse'),2500);
   }
 
-  // ZXing 중지
-  function stopZXing(){
-    try { if(zxingReader) zxingReader.reset(); } catch(_){}
-    zxingReader = null;
-    if(stream){
-      stream.getTracks().forEach(t=>t.stop());
-      stream = null;
-    }
-    video.srcObject = null;
-    msg.textContent = '카메라 중지됨';
+  // ===== 캡처 =====
+  async function capture(videoEl, maxW=960){
+    const vw=videoEl.videoWidth||640, vh=videoEl.videoHeight||480, aspect=4/3;
+    const srcAR=vw/vh;
+    let sx=0, sy=0, sw=vw, sh=vh;
+    if(srcAR>aspect){ sw=Math.round(vh*aspect); sx=Math.round((vw-sw)/2); }
+    else if(srcAR<aspect){ sh=Math.round(vw/aspect); sy=Math.round((vh-sh)/2); }
+    const outW=Math.min(maxW, sw), outH=Math.round(outW/aspect);
+    const c=document.createElement('canvas'); c.width=outW; c.height=outH;
+    c.getContext('2d',{willReadFrequently:true}).drawImage(videoEl, sx, sy, sw, sh, 0, 0, outW, outH);
+    return c.toDataURL('image/jpeg', 0.6);
   }
 
-  // 버튼
-  document.getElementById('startQrBtn').onclick = ()=>{
-    lastZXingVal='';
-    startZXing();
-  };
-  document.getElementById('stopQrBtn').onclick = ()=>{
-    stopZXing();
+  // ===== 버튼 =====
+  startQrBtn.onclick=async()=>{
+    if(running){ hidePhotoPanel(); stopCamera(); MODE='idle'; setMsg('카메라를 끔'); startQrBtn.textContent='🎥 QR 카메라 ON'; return; }
+    try{
+      await startQrScan(); startQrBtn.textContent='QR 카메라 OFF';
+      if(isMobile) smoothScrollTo(previewHost,-10);
+    }catch(e){
+      setMsg('카메라 오류: '+(e.name||e)); hidePhotoPanel(); stopCamera(); MODE='idle';
+      startQrBtn.textContent='🎥 QR 카메라 ON';
+    }
   };
 
-  // 페이지 벗어날 때 카메라 정리
-  window.addEventListener("pagehide", stopZXing);
-  window.addEventListener("beforeunload", stopZXing);
+  shotBtn.onclick=async()=>{
+    if(MODE!=='photo' || !pendingParsed) return;
+    const data={...pendingParsed};
+    const img=await capture(video,800).catch(()=>null);
+    stopPhotoLive(); photoLive.style.display='none'; stopCamera(); MODE='idle';
+    upsert({...data, imgDataUrl: img});
+    pendingParsed=null; photoStep.style.display='none';
+    setMsg('저장 완료'); startQrBtn.textContent='🎥 QR 카메라 ON';
+    scrollToTop();
+  };
+
+  skipBtn.onclick=async()=>{
+    if(MODE!=='photo' || !pendingParsed) return;
+    const data={...pendingParsed};
+    stopPhotoLive(); photoLive.style.display='none'; stopCamera(); MODE='idle';
+    upsert({...data, imgDataUrl:null});
+    pendingParsed=null; photoStep.style.display='none';
+    setMsg('사진 없이 저장했습니다.'); startQrBtn.textContent='🎥 QR 카메라 ON';
+    scrollToTop();
+  };
+
+  clearBtn.onclick=()=>{
+    if(!confirm('저장된 모든 레코드를 삭제할까요?')) return;
+    records=[]; save(); renderList(); tbody.innerHTML=''; setMsg('초기화 완료');
+  };
+
+  exportXlsxBtn.onclick=async()=>{
+    if(records.length===0){ setMsg('내보낼 데이터가 없습니다.'); return; }
+    const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('QR Scans');
+    ws.columns=[{header:'스캔시각', width:22},{header:'비품번호', width:18},{header:'비품명', width:28},{header:'위치', width:18},{header:'사용자', width:18},{header:'비품사진', width:28}];
+    ws.getRow(1).height=22; let rowIdx=2;
+    for(const r of records){
+      ws.addRow([r.scanned_at_kst||'', r.id||'', r.name||'', r.loc||'', r.owner||'', '']);
+      ws.getRow(rowIdx).height=95;
+      if(r.imgDataUrl){
+        const imgId=wb.addImage({base64:r.imgDataUrl.split(',')[1], extension:'jpeg'});
+        ws.addImage(imgId, { tl:{ col:5, row:rowIdx-1 }, ext:{ width:180, height:120 } });
+      }
+      rowIdx++;
+    }
+    const buf=await wb.xlsx.writeBuffer();
+    saveAs(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `qr_scans_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  // ===== 스캔 시작/워치독 =====
+  async function startQrScan(){
+    MODE='scan'; setMsg('QR을 화면 중앙에 크게 맞춰주세요…'); hidePhotoPanel();
+    if(preview.parentNode!==previewHost) previewHost.appendChild(preview);
+
+    if(!running){ await startCamera(); await ensureVisible(); } else { await ensureVisible(); }
+
+    showPreview(true); photoLive.style.display='none'; overlay.style.display='none';
+    startScanLoop(); // 스캔 루프 시작
+  }
+
+  const HEARTBEAT_MS=500, FREEZE_TICKS=6; // 3초 정지 시 재시작
+  setInterval(async ()=>{
+    if (document.visibilityState !== 'visible') return;
+    if (!running) return;
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+    const t = video.currentTime || 0;
+    if (t === lastVideoTime) stillTicks++; else stillTicks = 0;
+    lastVideoTime = t;
+    if (stillTicks >= FREEZE_TICKS || !isStreamHealthy()) {
+      await reviveCamera('프레임 정지/스트림 비정상 감지');
+    }
+  }, HEARTBEAT_MS);
+
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState === 'hidden') {
+      hidePhotoPanel();
+      stopCamera();
+      MODE = 'idle';
+      startQrBtn.textContent = '🎥 QR 카메라 ON';
+      setMsg('백그라운드로 이동하여 카메라를 종료했습니다.');
+    }
+  });
+
+  window.addEventListener('beforeunload', ()=>{
+    try{ stream?.getTracks().forEach(t=>t.stop()); }catch(_){}
+  });
 })();
 </script>
 </body>
