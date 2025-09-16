@@ -16,15 +16,16 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
   button{font-size:16px;padding:10px 16px;border:1px solid var(--border);border-radius:10px;background:#fff;cursor:pointer}
   button:hover{border-color:#c9ced6}
+  button.btn-ghost{ background:#fff; border:1px solid var(--border); }
   label.chk{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:#fff}
   label.chk input{width:18px;height:18px}
   .count{margin-left:auto;color:#333;font-size:14px}
-  #msg{margin:8px 2px;color:#475569}
+  #msg{margin:8px 2px;color:var(--muted)}
 
-  /* 미리보기 공용 */
+  /* 미리보기 */
   #previewHost{margin:10px 0}
   #preview{position:relative;width:100%;max-width:560px;aspect-ratio:1/1;overflow:hidden;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);display:none;background:transparent}
-  #video,#overlay{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:cover;object-position:center;pointer-events:none;background:transparent}
+  #video{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:cover;object-position:center;pointer-events:none;background:transparent}
 
   .card{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin:16px 0}
   .subtitle{color:var(--muted);font-size:13px;margin-top:-6px;margin-bottom:10px}
@@ -57,10 +58,48 @@
   .item .time{font-size:13px;color:#334155;background:#f1f5f9;border-radius:6px;padding:4px 8px}
   .badges{display:flex;flex-wrap:wrap;gap:6px}
   .badge{font-size:12px;border-radius:999px;padding:3px 8px}
-  .badge.id{background:var(--chip-id);color:var(--chip-id-text)}
-  .badge.name{background:var(--chip-name);color:var(--chip-name-text)}
-  .badge.loc{background:var(--chip-loc);color:var(--chip-loc-text)}
-  .badge.owner{background:var(--chip-owner);color:var(--chip-owner-text)}
+  .badge.id    { color:#1d4ed8; font-weight:600; }  /* 비품번호: 파랑 */
+.badge.name  { color:#0f766e; }                   /* 비품명: 청록 */
+.badge.loc   { color:#9a3412; }                   /* 위치: 갈색 */
+.badge.owner { color:#16181b; }                   /* 사용자: 검정 */
+
+/* 사진 여부만 상태 색상 */
+.badge.photo-ok { color:#15803d; font-weight:600; }   /* 초록 */
+.badge.photo-x  { color:#b91c1c; font-weight:600; }   /* 빨강 */
+  
+  #exportXlsxBtn {
+  background: #22c55e;   /* 녹색 배경 */
+  color: #fff;           /* 글자 흰색 */
+  border: none;
+  font-weight: 600;
+}
+#exportXlsxBtn:hover {
+  background: #16a34a;   /* hover 시 진한 녹색 */
+}
+#exportXlsxBtn:active {
+  background: #15803d;   /* 클릭 시 더 진한 녹색 */
+}
+  
+  
+  /* 목록의 X(삭제) 아이콘 버튼 */
+	.delBtn{
+	  appearance:none;
+	  border:0;
+	  background:transparent;
+	  width:26px; height:26px;           /* 작게 */
+	  border-radius:8px;                  /* 둥글게 */
+	  font-size:16px; line-height:1;
+	  color:#64748b;                      /* 중간 회색 */
+	  display:inline-flex; align-items:center; justify-content:center;
+	  cursor:pointer;
+	}
+	.delBtn:hover{ background:#f8fafc; color:#ef4444; }  /* 호버 시 은은한 배경 + 빨강 */
+	.delBtn:active{ transform:scale(.96); }
+	.delBtn:focus-visible{ outline:2px solid #cbd5e1; outline-offset:2px; }
+
+	/* 버튼이 너무 커 보이면 여기서 더 줄여도 돼요 (예: 24x24 / 폰트 15px) */
+
+  
 
   @keyframes pulseBorder { 0%{box-shadow:0 0 0 0 rgba(14,165,233,.45)} 70%{box-shadow:0 0 0 12px rgba(14,165,233,0)} 100%{box-shadow:0 0 0 0 rgba(14,165,233,0)} }
   .photo-step.pulse { animation: pulseBorder 1.2s ease-out 2; }
@@ -85,15 +124,107 @@
   .photo-grid .actions button{ flex:1 1 0; min-width:0; white-space:nowrap }
   @media (max-width:380px){ .photo-grid .actions{gap:6px} .photo-grid .actions button{font-size:14px;padding:9px 10px} }
   @media (max-width:320px){ .photo-grid .actions{ overflow-x:auto } }
+  
+  /* 카드 레이아웃 개선 */
+.item{
+  position: relative;       /* 우상단 삭제 버튼 고정용 */
+  padding-right: 44px;      /* 삭제 버튼 자리를 위해 우측 여백 */
+}
 
-  /* 커스텀 확인 모달 (예비) */
-  #confirmMask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:9999}
-  #confirmBox{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);max-width:420px;width:92%;padding:16px}
-  #confirmBox h3{margin:0 0 8px 0;font-size:16px}
-  #confirmBox p{margin:0 0 14px 0;color:#475569;white-space:pre-line}
-  #confirmBox .actions{display:flex;gap:8px;justify-content:flex-end}
-  #confirmBox .btn{padding:10px 14px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
-  #confirmBox .btn.primary{background:#16a34a;color:#fff;border:none}
+/* 헤더 1줄 유지 + 우상단 삭제 버튼 */
+.item .head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:28px;
+}
+.item .time{
+  flex:1 1 auto;
+  min-width:0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+#clearBtn {
+  position: absolute;
+  top: 0; right: 0;           /* 제목의 오른쪽 위 */
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #ef4444;        /* 빨강 배경 */
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+#clearBtn:hover {
+  background: #dc2626;        /* hover 시 더 진한 빨강 */
+}
+
+/* 삭제 버튼: 우상단 고정(모바일에서도 줄바꿈 안 됨) */
+.delBtn{
+  appearance:none;
+  border:0;
+  background:transparent;
+  width:28px; height:28px;
+  border-radius:8px;
+  font-size:18px; line-height:1;
+  color:#64748b;
+  display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer;
+
+  position:absolute;
+  top:8px; right:8px;           /* ← 고정 포지션 */
+}
+.delBtn:hover{ background:#f8fafc; color:#ef4444; }
+.delBtn:active{ transform:scale(.96); }
+.delBtn:focus-visible{ outline:2px solid #cbd5e1; outline-offset:2px; }
+
+/* 배지: 그리드로 정돈 + 넘침 말줄임 */
+.badges{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0,1fr)); /* 2열 그리드 */
+  gap:8px;
+}
+.badge{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  width:100%;
+}
+
+.title-with-action{ position:relative; padding-right:110px; }
+.title-with-action #clearBtn{
+  position:absolute; top:0; right:0;
+  font-size:13px; padding:6px 12px;
+  border-radius:8px; background:#ef4444; color:#fff; border:none;
+}
+.title-with-action #clearBtn:hover{ background:#dc2626; }
+
+/* 모바일 콤팩트 모드 */
+@media (max-width: 480px){
+  .item{ padding:12px 44px 10px 12px; } /* 우상단 버튼 공간 유지 */
+  .item .time {
+  font-size:13px;
+  color:#334155;
+  background:#f1f5f9;
+  border-radius:6px;
+  padding:4px 8px;
+}
+  .badges{
+    grid-template-columns: 1fr; /* 모바일은 1열로 쭉 */
+    gap:6px;
+  }
+  
+  .delBtn{ width:26px; height:26px; font-size:16px; }
+}
+
+/* 아주 좁은 화면 안전장치 */
+@media (max-width: 360px){
+  .badge{ font-size:11px; padding:3px 7px; }
+}
+
+  
 </style>
 </head>
 <body>
@@ -101,23 +232,21 @@
 
 <div class="row">
   <button id="startQrBtn" class="btn-primary">🎥 QR 카메라 ON</button>
-  <button id="exportXlsxBtn">엑셀 내보내기</button>
-  <button id="clearBtn">초기화</button>
+
   <label class="chk" title="체크 해제하면 사진 없이 즉시 저장합니다.">
     <input id="requirePhotoChk" type="checkbox" checked> 비품 사진 촬영
   </label>
+  <button id="exportXlsxBtn" title="엑셀 내보내기">엑셀다운</button>
   <span class="count" id="count">저장 0건</span>
 </div>
 
 <div id="previewHost">
   <div id="preview">
-    <!-- autoplay 추가 -->
     <video id="video" playsinline muted autoplay></video>
-    <canvas id="overlay"></canvas>
   </div>
 </div>
 
-<p id="msg">QR을 화면 중앙에 크게 맞춰주세요. (형식: <strong>DY:XXX-XXXXXX</strong>)</p>
+<p id="msg">QR을 화면 중앙에 크게 맞춰주세요.</p>
 
 <div class="card" id="infoCard">
   <h2>비품정보</h2>
@@ -125,7 +254,7 @@
   <table id="tbl"><tbody></tbody></table>
 
   <div id="photoStep" class="photo-step">
-    <div class="photo-head">QR 정상 인식됨 → 지금 비품 사진을 촬영하세요(처리용량 초과시 저장이 안될수 있습니다. 저장후 초기화를 하세요)</div>
+    <div class="photo-head">QR 정상 인식됨 → 지금 비품 사진을 촬영하세요 (처리용량 초과 시 저장 실패 가능. 저장 후 초기화하세요)</div>
     <div class="photo-grid">
       <div>
         <div class="photo-chips" id="photoChips"></div>
@@ -143,7 +272,9 @@
 </div>
 
 <div class="card">
-  <h2>최근 저장 목록</h2>
+  <h2 class="title-with-action">최근 저장 목록
+	<button id="clearBtn" class="danger">데이터 전체초기화</button>
+  </h2>
   <div class="subtitle">같은 항목을 다시 스캔해도 중복 저장하지 않고, 시간만 갱신합니다.</div>
   <div id="list" class="list"></div>
 </div>
@@ -163,8 +294,6 @@
   const previewHost = document.getElementById('previewHost');
   const preview = document.getElementById('preview');
   const video = document.getElementById('video');
-  const overlay = document.getElementById('overlay');
-  const ox = overlay.getContext('2d');
   const msg = document.getElementById('msg');
   const tbody = document.querySelector('#tbl tbody');
   const photoStep = document.getElementById('photoStep');
@@ -177,7 +306,7 @@
   const countEl = document.getElementById('count');
 
   // ===== 상태 =====
-  const DEBUG=false, TARGET=640, WARMUP_FRAMES=6;
+  const WARMUP_FRAMES = 8;
   let stream=null, running=false;
   let MODE='idle'; // idle | scan | photo
   let pendingParsed=null, photoRAF=null;
@@ -218,10 +347,10 @@
   loadItems();
 
   function findItemById(id){
-  const target = String(id||'').trim().toUpperCase(); // "A01-000001"
-  if(!target) return null;
-  return ITEMS.find(x => String(x.id||'').trim().toUpperCase() === target) || null;
-}
+    const target = String(id||'').trim().toUpperCase(); // "A01-000001"
+    if(!target) return null;
+    return ITEMS.find(x => String(x.id||'').trim().toUpperCase() === target) || null;
+  }
 
   // ===== 로컬 스토리지 =====
   let records=load(); renderList();
@@ -235,45 +364,43 @@
     save(); renderList();
   }
   function renderList(){
-  countEl.textContent = `저장 ${records.length}건`;
-  listEl.innerHTML = '';
+    countEl.textContent = `저장 ${records.length}건`;
+    listEl.innerHTML = '';
 
-  records.slice().reverse().forEach(r=>{
-    const d=document.createElement('div'); 
-    d.className='item';
+    records.slice().reverse().forEach(r=>{
+      const d=document.createElement('div');
+      d.className='item';
 
-    const photoStatus = r.imgDataUrl ? 'O' : 'X';
+      const photoStatus = r.imgDataUrl ? 'O' : 'X';
 
-    d.innerHTML = `
-      <div class="head">
-        <div class="time mono">${r.scanned_at_kst}</div>
-        <button class="delBtn" data-key="${esc(r._key)}" title="삭제">❌</button>
-      </div>
-      <div class="badges">
-        <span class="badge id">비품번호: ${esc(r.id)}</span>
-        <span class="badge name">비품명: ${esc(r.name)}</span>
-        <span class="badge loc">위치: ${esc(r.loc)}</span>
-        <span class="badge owner">사용자: ${esc(r.owner)}</span>
-        <span class="badge ${r.imgDataUrl ? 'name' : 'owner'}">비품사진: ${photoStatus}</span>
-      </div>
-    `;
+      d.innerHTML = `
+        <div class="head">
+          <div class="time mono">${r.scanned_at_kst}</div>
+		  <button class="delBtn" data-key="${esc(r._key)}" title="삭제" aria-label="삭제">&times;</button>
+        </div>
+        <div class="badges">
+          <span class="badge id">비품번호: ${esc(r.id)}</span>
+          <span class="badge name">비품명: ${esc(r.name)}</span>
+          <span class="badge loc">위치: ${esc(r.loc)}</span>
+          <span class="badge owner">사용자: ${esc(r.owner)}</span>
+          <span class="badge ${r.imgDataUrl ? 'photo-ok' : 'photo-x'}">비품사진: ${photoStatus}</span>
+        </div>
+      `;
 
-    listEl.appendChild(d);
-  });
+      listEl.appendChild(d);
+    });
 
-  // 삭제 버튼 이벤트 바인딩
-  listEl.querySelectorAll('.delBtn').forEach(btn=>{
-    btn.onclick = ()=>{
-      const k = btn.getAttribute('data-key');
-      if(confirm('이 항목을 삭제할까요?')){
-        records = records.filter(r => r._key !== k);
-        save(); renderList();
-      }
-    };
-  });
-}
-
-
+    // 삭제 버튼 이벤트 바인딩
+    listEl.querySelectorAll('.delBtn').forEach(btn=>{
+      btn.onclick = ()=>{
+        const k = btn.getAttribute('data-key');
+        if(confirm('이 항목을 삭제할까요?')){
+          records = records.filter(r => r._key !== k);
+          save(); renderList();
+        }
+      };
+    });
+  }
 
   // ===== 인식률 보강용 유틸 =====
   const TARGET_STEPS = [640, 800, 1024];
@@ -301,10 +428,10 @@
 
   // ===== DY 형식만 허용 =====
   const DY_ID_RE = /^\s*DY:([A-Za-z0-9]{3}-\d{6})\s*$/;  // 예: "DY:A01-000001" → 캡처 "A01-000001"
-function matchDyId(s){
-  const m = String(s||'').match(DY_ID_RE);
-  return m ? m[1].toUpperCase() : '';   // DY: 제거 + 대문자화 → "A01-000001"
-}
+  function matchDyId(s){
+    const m = String(s||'').match(DY_ID_RE);
+    return m ? m[1].toUpperCase() : '';   // DY: 제거 + 대문자화 → "A01-000001"
+  }
   function hasIdLike(s){
     return !!matchDyId(s);   // DY 형식일 때만 true
   }
@@ -328,12 +455,10 @@ function matchDyId(s){
   function showPreview(b){
     preview.style.display=b?'block':'none';
     video.style.display=b?'block':'none';
-    overlay.style.display=(b && DEBUG)?'block':'none';
   }
   async function ensureVisible(){
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     try{ if(video.paused || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) await video.play(); }catch(_){}
-    if(video.videoWidth && video.videoHeight){ overlay.width=video.videoWidth; overlay.height=video.videoHeight; }
   }
 
   // ===== 캔버스 미러(촬영 안내) =====
@@ -437,7 +562,7 @@ function matchDyId(s){
     hidePhotoPanel();
   }
 
-  // ===== 스캔 루프 (jsQR만, 예외 보호) =====
+  // ===== 스캔 루프 (jsQR) =====
   let accept={v:null,at:0};
   function canAccept(v){ const now=performance.now(); if(v && accept.v===v && now-accept.at<2000) return false; accept={v,at:now}; return true; }
 
@@ -452,7 +577,7 @@ function matchDyId(s){
       if(MODE!=='scan' || !running){ scanRAF=null; return; }
       try{
         if(video.readyState!==video.HAVE_ENOUGH_DATA){ scanRAF=requestAnimationFrame(loop); return; }
-        if(frame++<8){ scanRAF=requestAnimationFrame(loop); return; } // 워밍업
+        if(frame++ < WARMUP_FRAMES){ scanRAF=requestAnimationFrame(loop); return; } // 워밍업
 
         let qr=null;
         for(const w of TARGET_STEPS){ qr=tryDecode(video,{width:w,full:true},cache); if(qr&&qr.data) break; }
@@ -471,21 +596,14 @@ function matchDyId(s){
     scanRAF=requestAnimationFrame(loop);
   }
 
-  // ===== 안전 디코딩 =====
-  function safeDecode(s){
-    const t = String(s??'').replace(/\+/g, '%20');
-    if (!/%[0-9A-Fa-f]{2}/.test(t)) return String(s??'');
-    try{ return decodeURIComponent(t); }catch(_){ return String(s??''); }
-  }
-
-  // ===== 파서 (DY 형식만) =====
+  // ===== DY 파서 =====
   function parseQR(text){
-  const raw=String(text||'').trim();
-  const out={id:'',name:'',loc:'',owner:'',raw};
-  const id = matchDyId(raw);
-  if (id) out.id = id;  // 이제 out.id는 "A01-000001"
-  return out;
-}
+    const raw=String(text||'').trim();
+    const out={id:'',name:'',loc:'',owner:'',raw};
+    const id = matchDyId(raw);
+    if (id) out.id = id;  // "A01-000001"
+    return out;
+  }
 
   // raw에서도 id 추출 (DY 형식만)
   function extractIdFromRaw(raw){
@@ -521,82 +639,81 @@ function matchDyId(s){
 
   // ===== QR 처리 =====
   async function onQrDetected(val){
-  let parsed = parseQR(val);
+    let parsed = parseQR(val);
 
-  // id 없으면 진행 중단
-  if(!parsed.id){
-    setMsg('이 QR은 무시됩니다. 허용 형식: DY:XXX-XXXXXX (예: DY:A01-000001)');
-    MODE='scan'; showPreview(true); photoLive.style.display='none'; hidePhotoPanel();
-    return;
-  }
-
-  // JSON 보강: 먼저 현재 캐시에서 조회
-let found = ITEMS_READY ? findItemById(parsed.id) : null;
-
-// 못 찾으면 전체 새로고침 제안
-if(!found){
-  const ask = confirm(`비품번호 ${parsed.id} 의 정보가 없습니다.\n홈페이지를 새로고침하시겠습니까?\n(새로고침 이후 똑같은 증상이면 담당자에게 문의 바랍니다.)`);
-  if(ask){
-    window.location.reload();   // F5와 동일
-    return;
-  } else {
-    // 취소 시 → QR OFF 모드로 전환
-    hidePhotoPanel();
-    stopCamera();
-    MODE = 'idle';
-    startQrBtn.textContent = '🎥 QR 카메라 ON';
-    setMsg('새로고침을 취소했습니다. QR 카메라를 껐습니다.');
-    return;
-  }
-}
-
-  // found 있으면 누락 필드만 보강(기존 값은 유지)
-  if(found){
-    parsed = {
-      ...parsed,
-      name: parsed.name || found.name || '',
-      loc:  parsed.loc  || found.loc  || '',
-      owner:parsed.owner|| found.owner|| ''
-    };
-  }
-
-  renderTable(parsed);
-
-  if(parsed.id && hasSameId(parsed.id)){
-    const ok=confirm('최근 저장 목록에 같은 비품번호가 있습니다.\n계속 진행하시겠습니까?');
-    if(!ok){
-      stopPhotoLive(); hidePhotoPanel(); stopCamera(); MODE='idle';
-      startQrBtn.textContent='🎥 QR 카메라 ON';
-      setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 ON]을 누르세요.');
+    // id 없으면 진행 중단
+    if(!parsed.id){
+      setMsg('이 QR은 무시됩니다. 허용 형식: DY:XXX-XXXXXX (예: DY:A01-000001)');
+      MODE='scan'; showPreview(true); photoLive.style.display='none'; hidePhotoPanel();
       return;
     }
+
+    // JSON 보강: 먼저 현재 캐시에서 조회
+    let found = ITEMS_READY ? findItemById(parsed.id) : null;
+
+    // 못 찾으면 전체 새로고침 제안
+    if(!found){
+      const ask = confirm(`비품번호 ${parsed.id} 의 정보가 없습니다.\n홈페이지를 새로고침하시겠습니까?\n(새로고침 이후 동일하면 담당자에게 문의 바랍니다.)`);
+      if(ask){
+        window.location.reload();   // F5와 동일
+        return;
+      } else {
+        // 취소 시 → QR OFF 모드로 전환
+        hidePhotoPanel();
+        stopCamera();
+        MODE = 'idle';
+        startQrBtn.textContent = '🎥 QR 카메라 ON';
+        setMsg('새로고침을 취소했습니다. QR 카메라를 껐습니다.');
+        return;
+      }
+    }
+
+    // found 있으면 누락 필드만 보강
+    if(found){
+      parsed = {
+        ...parsed,
+        name: parsed.name || found.name || '',
+        loc:  parsed.loc  || found.loc  || '',
+        owner:parsed.owner|| found.owner|| ''
+      };
+    }
+
+    renderTable(parsed);
+
+    if(parsed.id && hasSameId(parsed.id)){
+      const ok=confirm('최근 저장 목록에 같은 비품번호가 있습니다.\n계속 진행하시겠습니까?');
+      if(!ok){
+        stopPhotoLive(); hidePhotoPanel(); stopCamera(); MODE='idle';
+        startQrBtn.textContent='🎥 QR 카메라 ON';
+        setMsg('취소됨: 카메라를 껐습니다. 다시 시작하려면 [QR 카메라 ON]을 누르세요.');
+        return;
+      }
+    }
+
+    // 사진 없이 저장 모드
+    if(!requirePhotoChk.checked){
+      stopCamera(); MODE='idle';
+      upsert({...parsed, imgDataUrl:null});
+      hidePhotoPanel();
+      setMsg('사진 없이 저장했습니다.');
+      startQrBtn.textContent='🎥 QR 카메라 ON';
+      return;
+    }
+
+    // 사진 촬영 플로우
+    pendingParsed=parsed;
+    MODE='photo';
+    renderChips(parsed);
+    photoStep.style.display='block';
+    showPreview(false);
+    photoLive.style.display='block';
+    await ensureVisible();
+    startPhotoLive();
+    setMsg('비품을 프레임에 맞춰 [비품 사진 촬영]을 눌러주세요.');
+    smoothScrollTo(photoStep,-8);
+    photoStep.classList.add('pulse');
+    setTimeout(()=>photoStep.classList.remove('pulse'),2500);
   }
-
-  // 사진 없이 저장 모드
-  if(!requirePhotoChk.checked){
-    stopCamera(); MODE='idle';
-    upsert({...parsed, imgDataUrl:null});
-    hidePhotoPanel();
-    setMsg('사진 없이 저장했습니다.');
-    startQrBtn.textContent='🎥 QR 카메라 ON';
-    return;
-  }
-
-  // 사진 촬영 플로우
-  pendingParsed=parsed;
-  MODE='photo';
-  renderChips(parsed);
-  photoStep.style.display='block';
-  showPreview(false);
-  photoLive.style.display='block';
-  await ensureVisible();
-  startPhotoLive();
-  setMsg('비품을 프레임에 맞춰 [비품 사진 촬영]을 눌러주세요.');
-  smoothScrollTo(photoStep,-8);
-  photoStep.classList.add('pulse');
-  setTimeout(()=>photoStep.classList.remove('pulse'),2500);
-}
-
 
   // ===== 캡처 =====
   async function capture(videoEl, maxW=960){
@@ -669,12 +786,12 @@ if(!found){
 
   // ===== 스캔 시작/워치독 =====
   async function startQrScan(){
-    MODE='scan'; setMsg('QR을 화면 중앙에 크게 맞춰주세요… (허용: DY:XXX-XXXXXX)'); hidePhotoPanel();
+    MODE='scan'; setMsg('QR을 화면 중앙에 크게 맞춰주세요.'); hidePhotoPanel();
     if(preview.parentNode!==previewHost) previewHost.appendChild(preview);
 
     if(!running){ await startCamera(); await ensureVisible(); } else { await ensureVisible(); }
 
-    showPreview(true); photoLive.style.display='none'; overlay.style.display='none';
+    showPreview(true); photoLive.style.display='none';
     startScanLoop();
   }
 
