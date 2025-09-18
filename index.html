@@ -427,7 +427,7 @@
   }
 
   // ===== DY 형식만 허용 =====
-  const DY_ID_RE = /^\s*DY:([A-Za-z0-9]{3}-\d{6})\s*$/;  // 예: "DY:A01-000001" → 캡처 "A01-000001"
+  const DY_ID_RE = /^\s*DY:([A-Za-z0-9]{3}-\d{5})\s*$/;  // 예: "DY:A01-000001" → 캡처 "A01-000001"
   function matchDyId(s){
     const m = String(s||'').match(DY_ID_RE);
     return m ? m[1].toUpperCase() : '';   // DY: 제거 + 대문자화 → "A01-000001"
@@ -826,3 +826,4 @@
 </script>
 </body>
 </html>
+
