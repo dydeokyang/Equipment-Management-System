@@ -1,9 +1,0 @@
-{
-  "name": "데이터 QR 스캐너",
-  "short_name": "QR 스캐너",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
-  "icons": []
-}
