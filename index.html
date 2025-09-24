@@ -3,6 +3,21 @@
 <head>
 <script>
 (function(){
+  // SW 등록 해제
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then(rs => Promise.all(rs.map(r => r.unregister())))
+      .then(() => {
+        // 캐시 스토리지도 싹 지우기
+        if (window.caches && caches.keys) {
+          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+        }
+      });
+  }
+})();
+</script>
+<script>
+(function(){
   var v = 'v={{ site.time | date: "%Y%m%d%H%M%S" }}';
   if (!new URL(location.href).searchParams.has('v')) {
     var u = new URL(location.href); u.searchParams.set('v', v);
@@ -836,5 +851,6 @@
 </script>
 </body>
 </html>
+
 
 
